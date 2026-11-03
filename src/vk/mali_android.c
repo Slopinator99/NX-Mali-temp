@@ -260,6 +260,10 @@ mali_AcquireImageANDROID(VkDevice _device, VkImage image, int nativeFenceFd,
  * runs and a periodic summary are logged; the present path itself never
  * blocks and holds no lock while this runs.
  */
+uint32_t mali_dbg_cur;
+uint32_t mali_dbg_n[64];
+char mali_dbg_ops[64][64];
+
 #define PCHK_QUEUE 16
 #define PCHK_GRID 24
 
@@ -268,6 +272,7 @@ struct pchk_job {
    int fence;       /* dup of the release fence, or -1 */
    uint32_t width, height, row_stride;
    uint64_t size;
+   uint32_t seq;
 };
 
 static struct {
@@ -320,6 +325,7 @@ pchk_sample_black(const struct pchk_job *j, uint32_t *lit_out)
 static void *
 pchk_worker(void *arg)
 {
+   uint32_t prev_seq = 0;
    for (;;) {
       pthread_mutex_lock(&pchk.lock);
       while (!pchk.count)
@@ -350,8 +356,19 @@ pchk_worker(void *arg)
             pchk.black++;
             pchk.black_run++;
          } else if (pchk.black_run) {
-            if (pchk.black_run == 1)
+            if (pchk.black_run == 1) {
                pchk.single_black++;
+               if (pchk.single_black <= 12) {
+                  for (int d = -2; d <= 0; d++) {
+                     const uint32_t sq = prev_seq + d;
+                     char buf[65] = {0};
+                     const uint32_t n = mali_dbg_n[sq % 64];
+                     memcpy(buf, mali_dbg_ops[sq % 64], n < 63 ? n : 63);
+                     mesa_logw("malisx2: pchk-ops frame seq=%u (%s) n=%u ops=%s", sq,
+                               d == 0 ? "BLACK" : "neighbour", n, buf);
+                  }
+               }
+            }
             if (pchk.logged++ < 80)
                mesa_logw("malisx2: present-check: BLACK run of %u presented frame(s) ended "
                          "at present #%u (lit=%u/%u, single-frame runs so far %u)",
@@ -366,6 +383,7 @@ pchk_worker(void *arg)
                       pchk.timeouts, pchk.dropped, pchk.skipped);
       }
       close(j.dmabuf);
+      prev_seq = j.seq;
    }
    return NULL;
 }
@@ -384,7 +402,11 @@ pchk_submit(VkImage image, int release_fence)
       pchk.skipped++;
       return;
    }
+   const uint32_t cur_seq = mali_dbg_cur;
+   mali_dbg_n[(cur_seq + 1) % 64] = 0;
+   __atomic_store_n(&mali_dbg_cur, cur_seq + 1, __ATOMIC_RELAXED);
    struct pchk_job j = {
+      .seq = cur_seq,
       .dmabuf = fcntl(img->wsi_mem->dmabuf_fd, F_DUPFD_CLOEXEC, 0),
       .fence = release_fence >= 0 ? fcntl(release_fence, F_DUPFD_CLOEXEC, 0) : -1,
       .width = img->vk.extent.width,

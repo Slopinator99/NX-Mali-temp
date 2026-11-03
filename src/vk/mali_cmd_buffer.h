@@ -260,6 +260,9 @@ void mali_cmd_frag_flush_pending(struct mali_cmd_buffer *cmd);
 
 
 /* Pass-state trace (diagnostic, lock-free, no logging on the normal path). */
+extern uint32_t mali_dbg_cur;
+extern uint32_t mali_dbg_n[64];
+extern char mali_dbg_ops[64][64];
 static inline void
 mali_trace_push(struct mali_cmd_buffer *cmd, char op)
 {
@@ -268,6 +271,13 @@ mali_trace_push(struct mali_cmd_buffer *cmd, char op)
       return; /* coalesce draw runs */
    cmd->gfx.trace.ops[n % 24] = op;
    cmd->gfx.trace.n = n + 1;
+   /* DIAGNOSTIC v23: per-present op history (see mali_android.c pchk_*). */
+   {
+      const uint32_t f = mali_dbg_cur % 64;
+      const uint32_t k = __atomic_fetch_add(&mali_dbg_n[f], 1, __ATOMIC_RELAXED);
+      if (k < 63)
+         mali_dbg_ops[f][k] = op;
+   }
 }
 void mali_trace_anomaly(struct mali_cmd_buffer *cmd, unsigned kind, const char *what);
 
