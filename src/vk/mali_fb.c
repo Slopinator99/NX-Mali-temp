@@ -1146,6 +1146,11 @@ MALI_PER_ARCH(CmdBeginRendering)(VkCommandBuffer commandBuffer, const VkRenderin
    d.height = MAX2(d.height, 1);
    d.layer_count = MAX2(d.layer_count, 1);
 
+#if PAN_ARCH >= 10
+   if (cmd->gfx.spec_render_pass)
+      mali_trace_anomaly(cmd, 4, "BeginRendering while spec pass open");
+   mali_trace_push(cmd, 'S');
+#endif
    MALI_PER_ARCH(cmd_render_begin)(cmd, &d);
    cmd->gfx.spec_render_pass = true;
 }
@@ -1154,6 +1159,11 @@ VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdEndRendering)(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
+#if PAN_ARCH >= 10
+   if (!cmd->gfx.spec_render_pass)
+      mali_trace_anomaly(cmd, 4, "EndRendering without spec pass");
+   mali_trace_push(cmd, 'E');
+#endif
    cmd->gfx.spec_render_pass = false;
    MALI_PER_ARCH(cmd_render_end)(cmd);
 }

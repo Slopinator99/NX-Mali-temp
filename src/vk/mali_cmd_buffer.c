@@ -1087,3 +1087,26 @@ MALI_PER_ARCH(CmdWaitEvents2)(VkCommandBuffer commandBuffer, uint32_t eventCount
        pDependencyInfo->imageMemoryBarrierCount)
       MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, pDependencyInfo);
 }
+
+/* Diagnostic: report a command that reaches the driver outside a real
+ * vkCmdBeginRendering window, with the last pass-state commands that led
+ * there. Budget per kind (0 draw, 1 clear, 2 query begin, 3 query end, 4
+ * nesting) keeps it cheap; nothing is logged on the normal path. */
+void
+mali_trace_anomaly(struct mali_cmd_buffer *cmd, unsigned kind, const char *what)
+{
+   static uint32_t budget[5];
+   if (kind >= 5 || __atomic_fetch_add(&budget[kind], 1, __ATOMIC_RELAXED) >= 25)
+      return;
+
+   char hist[25];
+   uint32_t n = cmd->gfx.trace.n, cnt = n < 24 ? n : 24;
+   for (uint32_t i = 0; i < cnt; i++)
+      hist[i] = cmd->gfx.trace.ops[(n - cnt + i) % 24];
+   hist[cnt] = 0;
+
+   vk_logw(VK_LOG_OBJS(cmd),
+           "malisx2-trace: %s cmd=%p spec=%d active=%d oq.mode=%d hist=[%s]", what, (void *)cmd,
+           cmd->gfx.spec_render_pass, cmd->gfx.render.active, cmd->gfx.occlusion.mode,
+           hist);
+}

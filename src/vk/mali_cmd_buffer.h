@@ -150,6 +150,13 @@ struct mali_cmd_buffer {
        * window so out-of-pass draws can be dropped instead of emitted into a
        * stale render state (VUID-vkCmdDrawIndexed-renderpass). */
       bool spec_render_pass;
+      /* Diagnostic: last commands that touched pass state (see
+       * mali_trace_push / mali_trace_anomaly). b/e internal render
+       * begin/end, S/E spec Begin/EndRendering, D draw, C clear, Q/q query. */
+      struct {
+         char ops[24];
+         uint32_t n;
+      } trace;
    } gfx;
 
    /* Cached copies of push descriptor sets (outside gfx/compute, which a
@@ -250,5 +257,18 @@ void mali_cmd_frag_flush_pending(struct mali_cmd_buffer *cmd);
 /* Compute dispatch (mali_cmd_dispatch.c) and the internal copy shaders
  * (mali_cmd_copy.c): mali_cmd_gfx.h, shared with the job-manager back
  * half. */
+
+
+/* Pass-state trace (diagnostic, lock-free, no logging on the normal path). */
+static inline void
+mali_trace_push(struct mali_cmd_buffer *cmd, char op)
+{
+   uint32_t n = cmd->gfx.trace.n;
+   if (op == 'D' && n && cmd->gfx.trace.ops[(n - 1) % 24] == 'D')
+      return; /* coalesce draw runs */
+   cmd->gfx.trace.ops[n % 24] = op;
+   cmd->gfx.trace.n = n + 1;
+}
+void mali_trace_anomaly(struct mali_cmd_buffer *cmd, unsigned kind, const char *what);
 
 #endif

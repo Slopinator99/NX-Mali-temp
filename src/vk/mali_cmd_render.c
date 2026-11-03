@@ -53,6 +53,9 @@
 void
 MALI_PER_ARCH(cmd_render_begin)(struct mali_cmd_buffer *cmd, const struct mali_render_desc *desc)
 {
+   if (cmd->gfx.render.active)
+      mali_trace_anomaly(cmd, 4, "render_begin while render.active");
+   mali_trace_push(cmd, 'b');
    const bool any_preload = MALI_PER_ARCH(fb_begin)(cmd, desc);
 
    if (any_preload) {
@@ -464,6 +467,7 @@ void
 MALI_PER_ARCH(cmd_render_end)(struct mali_cmd_buffer *cmd)
 {
    struct mali_render_state *r = &cmd->gfx.render;
+   mali_trace_push(cmd, r->active ? 'e' : 'x');
    if (!r->active)
       return;
 

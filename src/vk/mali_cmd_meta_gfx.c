@@ -1277,6 +1277,11 @@ MALI_PER_ARCH(CmdClearAttachments)(VkCommandBuffer commandBuffer, uint32_t attac
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    struct mali_render_state *r = &cmd->gfx.render;
 
+#if PAN_ARCH >= 10
+   if (!cmd->gfx.spec_render_pass)
+      mali_trace_anomaly(cmd, 1, "ClearAttachments outside spec pass");
+   mali_trace_push(cmd, 'C');
+#endif
    if (!r->active || !rectCount || vk_command_buffer_has_error(&cmd->vk))
       return;
 

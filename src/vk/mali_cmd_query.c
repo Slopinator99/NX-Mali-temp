@@ -199,6 +199,9 @@ MALI_PER_ARCH(CmdBeginQuery)(VkCommandBuffer commandBuffer, VkQueryPool _pool, u
    VK_FROM_HANDLE(mali_query_pool, pool, _pool);
    struct mali_gfx_occlusion *oq = &cmd->gfx.occlusion;
 
+   if (!cmd->gfx.spec_render_pass)
+      mali_trace_anomaly(cmd, 2, "BeginQuery outside spec pass");
+   mali_trace_push(cmd, 'Q');
    oq->ptr = query_report_addr(pool, query);
    oq->syncobj = query_avail_addr(pool, query);
    oq->mode = (flags & VK_QUERY_CONTROL_PRECISE_BIT) ? MALI_OCCLUSION_MODE_COUNTER
@@ -226,6 +229,10 @@ MALI_PER_ARCH(CmdEndQuery)(VkCommandBuffer commandBuffer, VkQueryPool _pool, uin
    struct mali_gfx_occlusion *oq = &cmd->gfx.occlusion;
    struct mali_render_state *r = &cmd->gfx.render;
    const uint64_t syncobj = query_avail_addr(pool, query);
+
+   if (!cmd->gfx.spec_render_pass)
+      mali_trace_anomaly(cmd, 3, "EndQuery outside spec pass");
+   mali_trace_push(cmd, 'q');
 
    /* Stop the accumulation for the next draw. */
    oq->ptr = 0;

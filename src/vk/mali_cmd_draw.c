@@ -413,6 +413,9 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
 
    if (!di->count || !di->instance_count)
       return;
+   if (!cmd->gfx.spec_render_pass)
+      mali_trace_anomaly(cmd, 0, "draw outside spec pass");
+   mali_trace_push(cmd, 'D');
    if (!r->active || !d->pipeline || !d->pipeline->vs) {
       vk_logw(VK_LOG_OBJS(cmd), "malisx2: draw outside a render pass or without a pipeline");
       return;
