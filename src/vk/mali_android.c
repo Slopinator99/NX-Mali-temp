@@ -41,6 +41,7 @@
 #include "vk_util.h"
 
 #include "mali_image.h"
+#include "mali_cmd_buffer.h"
 #include "mali_memory.h"
 #include "mali_vk.h"
 #include "mali_wsi.h"
