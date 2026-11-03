@@ -19,6 +19,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 mali_CreateBuffer(VkDevice _device, const VkBufferCreateInfo *pCreateInfo,
                   const VkAllocationCallbacks *pAllocator, VkBuffer *pBuffer)
 {
+   MALI_DBG_EV(6);
    VK_FROM_HANDLE(mali_device, dev, _device);
    struct mali_physical_device *pdev = mali_device_physical(dev);
 
@@ -41,6 +42,7 @@ VKAPI_ATTR void VKAPI_CALL
 mali_DestroyBuffer(VkDevice _device, VkBuffer _buffer,
                    const VkAllocationCallbacks *pAllocator)
 {
+   MALI_DBG_EV(7);
    VK_FROM_HANDLE(mali_device, dev, _device);
    VK_FROM_HANDLE(mali_buffer, buf, _buffer);
 

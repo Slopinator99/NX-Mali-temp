@@ -258,6 +258,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 mali_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
                  const VkAllocationCallbacks *pAllocator, VkImage *pImage)
 {
+   MALI_DBG_EV(0);
    VK_FROM_HANDLE(mali_device, dev, _device);
    struct mali_physical_device *pdev = mali_device_physical(dev);
    VkResult result;
@@ -386,6 +387,7 @@ fail:
 VKAPI_ATTR void VKAPI_CALL
 mali_DestroyImage(VkDevice _device, VkImage _image, const VkAllocationCallbacks *pAllocator)
 {
+   MALI_DBG_EV(1);
    VK_FROM_HANDLE(mali_device, dev, _device);
    VK_FROM_HANDLE(mali_image, image, _image);
 
@@ -477,6 +479,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 mali_BindImageMemory2(VkDevice _device, uint32_t bindInfoCount,
                       const VkBindImageMemoryInfo *pBindInfos)
 {
+   MALI_DBG_EV(9);
    VK_FROM_HANDLE(mali_device, dev, _device);
    VkResult result = VK_SUCCESS;
 
@@ -539,6 +542,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 mali_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
                      const VkAllocationCallbacks *pAllocator, VkImageView *pView)
 {
+   MALI_DBG_EV(2);
    VK_FROM_HANDLE(mali_device, dev, _device);
 
    struct mali_image_view *view =
@@ -561,6 +565,7 @@ VKAPI_ATTR void VKAPI_CALL
 mali_DestroyImageView(VkDevice _device, VkImageView _view,
                       const VkAllocationCallbacks *pAllocator)
 {
+   MALI_DBG_EV(3);
    VK_FROM_HANDLE(mali_device, dev, _device);
    VK_FROM_HANDLE(mali_image_view, view, _view);
 

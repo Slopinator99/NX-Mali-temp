@@ -143,6 +143,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 mali_AllocateMemory(VkDevice _device, const VkMemoryAllocateInfo *pAllocateInfo,
                     const VkAllocationCallbacks *pAllocator, VkDeviceMemory *pMem)
 {
+   MALI_DBG_EV(4);
    VK_FROM_HANDLE(mali_device, dev, _device);
    struct mali_physical_device *pdev = mali_device_physical(dev);
    const uint32_t type = pAllocateInfo->memoryTypeIndex;
@@ -283,6 +284,7 @@ VKAPI_ATTR void VKAPI_CALL
 mali_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
                 const VkAllocationCallbacks *pAllocator)
 {
+   MALI_DBG_EV(5);
    VK_FROM_HANDLE(mali_device, dev, _device);
    VK_FROM_HANDLE(mali_device_memory, mem, _mem);
 
@@ -415,6 +417,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 mali_FlushMappedMemoryRanges(VkDevice _device, uint32_t memoryRangeCount,
                              const VkMappedMemoryRange *pMemoryRanges)
 {
+   MALI_DBG_EV(8);
    VK_FROM_HANDLE(mali_device, dev, _device);
    return sync_ranges(dev, memoryRangeCount, pMemoryRanges, true);
 }
