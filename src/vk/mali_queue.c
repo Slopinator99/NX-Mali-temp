@@ -1054,14 +1054,11 @@ mali_queue_submit(struct vk_queue *vkq, struct vk_queue_submit *submit)
    }
 
    /* Signals: pending until every subqueue reaches what it will have
-    * written by the end of this submit. Binary semaphore waits consume
-    * the payload. */
+    * written by the end of this submit. Waits do not consume the payload
+    * (VK_SYNC_FEATURE_GPU_MULTI_WAIT): Mesa's emulated timeline points can
+    * have several waiters, and the runtime itself resets binary semaphores
+    * after their wait is submitted. */
    pthread_mutex_lock(&dev->lock);
-   for (uint32_t i = 0; i < submit->wait_count; i++) {
-      struct mali_sync *s = to_mali_sync(submit->waits[i].sync);
-      if (!(s->vk.flags & VK_SYNC_IS_TIMELINE))
-         MALI_PER_ARCH(sync_clear)(s);
-   }
    for (uint32_t i = 0; i < submit->signal_count; i++) {
       struct mali_sync *s = to_mali_sync(submit->signals[i].sync);
       MALI_PER_ARCH(sync_clear)(s);

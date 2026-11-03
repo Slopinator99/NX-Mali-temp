@@ -404,6 +404,8 @@ static struct vk_device_extension_table
 device_extensions_for_arch(uint32_t arch)
 {
    struct vk_device_extension_table ext = mali_device_extensions;
+   /* Emulated timeline semaphores need the CSF sync type's multi-wait. */
+   ext.KHR_timeline_semaphore = arch >= 10;
    return ext;
 }
 
@@ -472,7 +474,7 @@ get_features(struct vk_features *f, uint32_t arch)
       .largePoints = true,
       .alphaToOne = false,
       .multiViewport = false,
-      .timelineSemaphore = true,
+      .timelineSemaphore = arch >= 10,
       /* No minimum revision on v7 or v9: Mesa's model table lists none
        * for the G52, G57 or G68 (it does for the G51 and G72). */
       .samplerAnisotropy = true,
@@ -1030,10 +1032,14 @@ physical_device_create(struct mali_instance *instance, const char *path,
       const struct vk_sync_type *base = (pdev->arch == 7   ? mali_v7_sync_types
                                          : pdev->arch == 9 ? mali_v9_sync_types
                                                            : mali_v11_sync_types)[0];
-      pdev->sync_timeline_type = vk_sync_timeline_get_type(base);
       pdev->sync_types[0] = base;
-      pdev->sync_types[1] = &pdev->sync_timeline_type.sync;
-      pdev->sync_types[2] = NULL;
+      if (pdev->arch >= 10) {
+         pdev->sync_timeline_type = vk_sync_timeline_get_type(base);
+         pdev->sync_types[1] = &pdev->sync_timeline_type.sync;
+         pdev->sync_types[2] = NULL;
+      } else {
+         pdev->sync_types[1] = NULL;
+      }
       pdev->vk.supported_sync_types = pdev->sync_types;
    }
 

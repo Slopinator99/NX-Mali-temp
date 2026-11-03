@@ -412,9 +412,18 @@ sync_export_sync_file(struct vk_device *vkdev, struct vk_sync *vs, int *pfd)
    return result;
 }
 
+/* CSF only: its queue submit does not consume a sync on wait (see
+ * mali_queue.c), which Mesa's emulated timeline points need. The job-manager
+ * queues still consume binary waits themselves. */
+#if defined(PAN_ARCH) && PAN_ARCH < 10
+#define MALI_SYNC_MULTI_WAIT 0
+#else
+#define MALI_SYNC_MULTI_WAIT VK_SYNC_FEATURE_GPU_MULTI_WAIT
+#endif
+
 const struct vk_sync_type MALI_PER_ARCH(sync_type) = {
    .size = sizeof(struct mali_sync),
-   .features = VK_SYNC_FEATURE_BINARY | VK_SYNC_FEATURE_GPU_WAIT |
+   .features = MALI_SYNC_MULTI_WAIT | VK_SYNC_FEATURE_BINARY | VK_SYNC_FEATURE_GPU_WAIT |
                VK_SYNC_FEATURE_CPU_WAIT |
                VK_SYNC_FEATURE_CPU_RESET | VK_SYNC_FEATURE_CPU_SIGNAL |
                VK_SYNC_FEATURE_WAIT_ANY | VK_SYNC_FEATURE_WAIT_PENDING,
