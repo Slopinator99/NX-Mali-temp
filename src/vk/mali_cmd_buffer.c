@@ -991,3 +991,99 @@ MALI_PER_ARCH(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
    }
    mali_cmd_emit_barrier(cmd, &deps);
 }
+
+/* ---------------------------------------------------------------------- */
+/* Events                                                                  */
+
+/*
+ * VkEvent, lowered to barriers. An event object carries no GPU state: a
+ * vkCmdSetEvent records nothing, and the wait emits the ordering as one
+ * full execution barrier. Over-ordering is always legal in Vulkan (a
+ * stronger dependency never produces wrong output), and the only user is a
+ * wait-for-idle (Eden's RasterizerVulkan::WaitForIdle: vkCmdSetEvent then
+ * vkCmdWaitEvents around no barriers), for which "order everything before
+ * everything" is exactly the intent. This sidesteps porting panvk's per-
+ * subqueue sync32 / private-memory event machinery.
+ *
+ * All five entry points are per-arch, so they exist only for the CSF (v11)
+ * back half that compiles this file. The job-manager arches keep the waist
+ * stubs, where vkCreateEvent fails cleanly (VK_ERROR_FEATURE_NOT_PRESENT)
+ * rather than the waits silently doing nothing.
+ */
+
+struct mali_event {
+   struct vk_object_base base;
+};
+
+VKAPI_ATTR VkResult VKAPI_CALL
+MALI_PER_ARCH(CreateEvent)(VkDevice _device, const VkEventCreateInfo *pCreateInfo,
+                           const VkAllocationCallbacks *pAllocator, VkEvent *pEvent)
+{
+   VK_FROM_HANDLE(mali_device, dev, _device);
+
+   /* A host-only token (no GPU state; see above). */
+   struct mali_event *event =
+      vk_object_zalloc(&dev->vk, pAllocator, sizeof(*event), VK_OBJECT_TYPE_EVENT);
+   if (event == NULL)
+      return vk_error(&dev->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   *pEvent = (VkEvent)(uintptr_t)event;
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(DestroyEvent)(VkDevice _device, VkEvent _event,
+                            const VkAllocationCallbacks *pAllocator)
+{
+   VK_FROM_HANDLE(mali_device, dev, _device);
+
+   if (_event)
+      vk_object_free(&dev->vk, pAllocator, (void *)(uintptr_t)_event);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdSetEvent2)(VkCommandBuffer commandBuffer, VkEvent event,
+                            const VkDependencyInfo *pDependencyInfo)
+{
+   /* The ordering this set stands for is emitted at the matching wait
+    * (CmdWaitEvents2), so a set records nothing here. */
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdResetEvent2)(VkCommandBuffer commandBuffer, VkEvent event,
+                              VkPipelineStageFlags2 stageMask)
+{
+   /* There is no GPU event state to clear. */
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdWaitEvents2)(VkCommandBuffer commandBuffer, uint32_t eventCount,
+                              const VkEvent *pEvents,
+                              const VkDependencyInfo *pDependencyInfo)
+{
+   /* One full execution barrier: everything recorded before the wait
+    * completes before anything after it starts. That covers whatever
+    * stages the events were set with and is the flush the wait-for-idle
+    * caller wants; access masks stay 0 because this orders execution
+    * only, matching the sync1-to-sync2 translation Mesa's common layer
+    * applies to these barriers. */
+   const VkMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+   };
+   const VkDependencyInfo dep = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = 1,
+      .pMemoryBarriers = &barrier,
+   };
+
+   MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, &dep);
+
+   /* The caller's own barriers, if any (Eden passes none; a general
+    * vkCmdWaitEvents may). Sequential composition is correct. */
+   if (pDependencyInfo->memoryBarrierCount ||
+       pDependencyInfo->bufferMemoryBarrierCount ||
+       pDependencyInfo->imageMemoryBarrierCount)
+      MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, pDependencyInfo);
+}

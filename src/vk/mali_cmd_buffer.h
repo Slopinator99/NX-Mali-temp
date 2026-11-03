@@ -141,6 +141,15 @@ struct mali_cmd_buffer {
       struct mali_gfx_draw_state draw;
       /* The render pass instance being recorded (mali_cmd_render.c). */
       struct mali_render_state render;
+      /* The occlusion query currently accumulating samples
+       * (mali_cmd_query.c; 0/Disabled when none). */
+      struct mali_gfx_occlusion occlusion;
+      /* True only inside a real vkCmdBeginRendering/vkCmdEndRendering pair.
+       * render.active is also set by internal passes (transfer_pass), so it
+       * can read true outside a spec render pass; this tracks the spec's
+       * window so out-of-pass draws can be dropped instead of emitted into a
+       * stale render state (VUID-vkCmdDrawIndexed-renderpass). */
+      bool spec_render_pass;
    } gfx;
 
    /* Cached copies of push descriptor sets (outside gfx/compute, which a

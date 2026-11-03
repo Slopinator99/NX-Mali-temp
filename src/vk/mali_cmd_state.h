@@ -72,6 +72,23 @@
 #include "mali_pipeline.h"
 #include "mali_vk.h"
 
+/* Mesa's pan_compute_npot_divisor: the fixed-point reciprocal of a divisor
+ * that is not a power of two. */
+static inline unsigned
+compute_npot_divisor(unsigned hw_divisor, unsigned *divisor_r, unsigned *divisor_e)
+{
+   const unsigned r = util_logbase2(hw_divisor);
+   const uint64_t shift_hi = 32 + r;
+   const uint64_t t = (uint64_t)1 << shift_hi;
+   const uint64_t f0 = t + hw_divisor / 2;
+   const uint64_t fi = f0 / hw_divisor;
+   const uint64_t ff = f0 - fi * hw_divisor;
+   const uint64_t d = fi - (1ull << 31);
+   *divisor_r = r;
+   *divisor_e = ff > hw_divisor / 2 ? 1 : 0;
+   return d;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Compute                                                                 */
 
@@ -131,11 +148,22 @@ mali_compute_task_axis(const struct mali_thread_props *tp, const struct mali_sha
       MIN3(tp->max_threads_per_wg, tp->max_threads_per_core, tp->registers_per_core / regs);
    const unsigned threads_per_wg =
       cs->cs.local_size[0] * cs->cs.local_size[1] * cs->cs.local_size[2];
-   const uint64_t total = (uint64_t)groups[0] * groups[1] * groups[2];
-
    *axis = MALI_TASK_AXIS_X;
    *inc = 1;
-   if (!total || !threads_per_wg)
+   if (!threads_per_wg)
+      return;
+
+   /* An indirect dispatch (groups NULL) has no count on the CPU: the
+    * increment is bounded by the core, and the hardware clamps it to the
+    * job size along X. */
+   if (!groups) {
+      const unsigned threads_per_task = DIV_ROUND_UP(max_threads, tp->max_tasks_per_core);
+      *inc = MAX2(threads_per_task / threads_per_wg, 1);
+      return;
+   }
+
+   const uint64_t total = (uint64_t)groups[0] * groups[1] * groups[2];
+   if (!total)
       return;
 
    const unsigned wgs_per_core = (unsigned)MIN2(DIV_ROUND_UP(total, tp->core_count), UINT32_MAX);
@@ -185,9 +213,12 @@ mali_compute_fau(struct mali_cmd_buffer *cmd, const struct mali_shader *cs,
    sv.base.x = base[0];
    sv.base.y = base[1];
    sv.base.z = base[2];
-   sv.num_work_groups.x = groups[0];
-   sv.num_work_groups.y = groups[1];
-   sv.num_work_groups.z = groups[2];
+   /* NULL groups: an indirect dispatch, whose counts the GPU stores here. */
+   if (groups) {
+      sv.num_work_groups.x = groups[0];
+      sv.num_work_groups.y = groups[1];
+      sv.num_work_groups.z = groups[2];
+   }
    sv.local_group_size.x = cs->cs.local_size[0];
    sv.local_group_size.y = cs->cs.local_size[1];
    sv.local_group_size.z = cs->cs.local_size[2];
@@ -323,9 +354,12 @@ mali_compute_tsd(struct mali_cmd_buffer *cmd, const struct mali_shader *cs,
       unsigned wg_per_task =
          DIV_ROUND_UP(tp->max_threads_per_core / tp->max_tasks_per_core, threads_per_wg);
       unsigned max_per_core = util_next_power_of_two(wg_per_task * tp->max_tasks_per_core);
-      unsigned dispatch = util_next_power_of_two(groups[0]) *
-                          util_next_power_of_two(groups[1]) *
-                          util_next_power_of_two(groups[2]);
+      /* An indirect dispatch (groups NULL) may be any size: as many
+       * instances as the core takes. */
+      unsigned dispatch = groups ? util_next_power_of_two(groups[0]) *
+                                      util_next_power_of_two(groups[1]) *
+                                      util_next_power_of_two(groups[2])
+                                 : UINT32_MAX;
       wls_instances = MIN2(dispatch, max_per_core);
       wls_size = util_next_power_of_two(MAX2(cs->info.wls_size, 128));
       uint64_t total = (uint64_t)wls_size * wls_instances * tp->core_id_range;
@@ -561,10 +595,13 @@ mali_gfx_pack_attrib(const struct vk_vertex_input_state *vi, const uint16_t *str
          cfg.frequency = MALI_ATTRIBUTE_FREQUENCY_INSTANCE;
          cfg.divisor_r = __builtin_ctz(bs->divisor);
       } else {
-         /* Not reachable for ARMSX2 (no divisors); the NPOT magic numbers
-          * are not implemented. */
-         cfg.attribute_type = MALI_ATTRIBUTE_TYPE_1D;
+         unsigned divisor_r = 0, divisor_e = 0;
+         const unsigned divisor_d = compute_npot_divisor(bs->divisor, &divisor_r, &divisor_e);
+         cfg.attribute_type = MALI_ATTRIBUTE_TYPE_1D_NPOT_DIVISOR;
          cfg.frequency = MALI_ATTRIBUTE_FREQUENCY_INSTANCE;
+         cfg.divisor_r = divisor_r;
+         cfg.divisor_e = divisor_e;
+         cfg.divisor_d = divisor_d;
       }
    }
 }

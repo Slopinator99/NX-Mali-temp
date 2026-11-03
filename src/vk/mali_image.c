@@ -430,9 +430,18 @@ mali_GetImageMemoryRequirements2(VkDevice _device, const VkImageMemoryRequiremen
 }
 
 /* The CRC knobs (mali_cmd_gfx.h): here, in code compiled once, so the
- * render-pass code of every arch reads the same ones. */
+ * render-pass code of every arch reads the same ones.
+ *
+ * Transaction Elimination (CRC) is disabled for now: on Eden every textured
+ * surface (sprites, backgrounds, characters) flickers, with no driver
+ * warnings, which is the signature of TE eliminating a tile whose CRC was
+ * stale (the tile keeps the previous frame's pixels). TE is only a bandwidth
+ * optimization — disabling it cannot corrupt anything, so this is the safe
+ * default while the CRC/seed invalidation is tracked down. Set .disable =
+ * false to re-enable once that is fixed. */
 struct mali_crc_options mali_crc_options = {
-   .empty_tile_read = true,
+   .disable = true,
+   .empty_tile_read = false,
    .empty_tile_write = true,
 };
 

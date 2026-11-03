@@ -33,6 +33,7 @@
 #include "mali_measure.h"
 
 #include "mali_arch.h"
+#include "mali_memory.h"
 #include "mali_queue.h"
 
 #define COMPUTE_SRT MALI_COMPUTE_SR_SRT_0
@@ -63,28 +64,54 @@ next_iter_sb(struct mali_cmd_buffer *cmd, struct cs_builder *b)
    cs_set_state(b, MALI_CS_SET_STATE_TYPE_SB_MASK_STREAM, sb_mask);
 }
 
+/* The workgroup counts of an indirect dispatch, loaded into JOB_SIZE, are
+ * also the num_work_groups sysvals the shader reads: store them into the
+ * FAU words mali_compute_fau left zero (panvk cmd_dispatch). */
+static void
+store_indirect_sysvals(struct cs_builder *b, const struct mali_shader *cs, uint64_t fau)
+{
+   const unsigned first = offsetof(struct mali_compute_sysvals, num_work_groups);
+   const struct cs_index sr[3] = {
+      cs_sr_reg32(b, COMPUTE, JOB_SIZE_X),
+      cs_sr_reg32(b, COMPUTE, JOB_SIZE_Y),
+      cs_sr_reg32(b, COMPUTE, JOB_SIZE_Z),
+   };
+   cs_move64_to(b, mali_cs_scratch_reg64(b, 0), fau & BITFIELD64_MASK(56));
+   for (unsigned i = 0; i < 3; i++) {
+      const unsigned off = first + i * sizeof(uint32_t);
+      const unsigned w = off / 8;
+      if (!BITSET_TEST(cs->fau.used_sysvals, w))
+         continue;
+      unsigned slot = 0;
+      for (unsigned j = 0; j < w; j++)
+         slot += BITSET_TEST(cs->fau.used_sysvals, j);
+      cs_store32(b, sr[i], mali_cs_scratch_reg64(b, 0), slot * 8 + off % 8);
+   }
+   cs_flush_stores(b);
+}
+
 static void
 dispatch(struct mali_cmd_buffer *cmd, const struct mali_shader *cs,
          const struct mali_desc_state *desc, const void *push, uint32_t push_size,
-         const uint32_t base[3], const uint32_t groups[3], const uint32_t (*textures)[8],
-         unsigned texture_count)
+         const uint32_t base[3], const uint32_t groups[3], uint64_t indirect,
+         const uint32_t (*textures)[8], unsigned texture_count)
 {
    if (!cs || !cs->spd[MALI_SPD_MAIN])
       return;
-   if (!groups[0] || !groups[1] || !groups[2])
+   if (!indirect && (!groups[0] || !groups[1] || !groups[2]))
       return;
 
    const struct mali_thread_props tp = mali_thread_props(cmd->dev);
 
-   uint64_t fau = mali_compute_fau(cmd, cs, push, push_size, base, groups);
+   uint64_t fau = mali_compute_fau(cmd, cs, push, push_size, base, indirect ? NULL : groups);
    uint64_t srt = mali_compute_res_table(cmd, cs, desc, textures, texture_count);
-   uint64_t tsd = mali_compute_tsd(cmd, cs, &tp, groups);
+   uint64_t tsd = mali_compute_tsd(cmd, cs, &tp, indirect ? NULL : groups);
    if (vk_command_buffer_has_error(&cmd->vk) || !srt || !tsd ||
        (cs->fau.total_count && !fau))
       return;
 
    unsigned axis, inc;
-   mali_compute_task_axis(&tp, cs, groups, &axis, &inc);
+   mali_compute_task_axis(&tp, cs, indirect ? NULL : groups, &axis, &inc);
 
    struct cs_builder *b = mali_cmd_cs(cmd, MALI_SUBQUEUE_COMPUTE);
 
@@ -108,9 +135,16 @@ dispatch(struct mali_cmd_buffer *cmd, const struct mali_shader *cs,
    cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_OFFSET_X), 0);
    cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_OFFSET_Y), 0);
    cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_OFFSET_Z), 0);
-   cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_X), groups[0]);
-   cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_Y), groups[1]);
-   cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_Z), groups[2]);
+   if (indirect) {
+      cs_move64_to(b, mali_cs_scratch_reg64(b, 0), indirect);
+      cs_load_to(b, cs_sr_reg_tuple(b, COMPUTE, JOB_SIZE_X, 3), mali_cs_scratch_reg64(b, 0),
+                 BITFIELD_MASK(3), 0);
+      store_indirect_sysvals(b, cs, fau);
+   } else {
+      cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_X), groups[0]);
+      cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_Y), groups[1]);
+      cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_Z), groups[2]);
+   }
 
    /* Timing. */
    uint32_t mh = 0;
@@ -119,8 +153,10 @@ dispatch(struct mali_cmd_buffer *cmd, const struct mali_shader *cs,
                               cmd->dispatches);
       uint64_t key;
       memcpy(&key, cs->key, sizeof(key));
-      mali_measure_info(cmd, mh, groups[0], groups[1], groups[2],
-                        cs->cs.local_size[0] * cs->cs.local_size[1] * cs->cs.local_size[2]);
+      if (!indirect) {
+         mali_measure_info(cmd, mh, groups[0], groups[1], groups[2],
+                           cs->cs.local_size[0] * cs->cs.local_size[1] * cs->cs.local_size[2]);
+      }
       mali_measure_shader(cmd, mh, key);
    }
 
@@ -137,7 +173,7 @@ MALI_PER_ARCH(cmd_dispatch_shader)(struct mali_cmd_buffer *cmd, const struct mal
                          uint32_t push_size, const uint32_t base[3],
                          const uint32_t groups[3])
 {
-   dispatch(cmd, cs, desc, push, push_size, base, groups, NULL, 0);
+   dispatch(cmd, cs, desc, push, push_size, base, groups, 0, NULL, 0);
 }
 
 void
@@ -146,7 +182,7 @@ MALI_PER_ARCH(cmd_dispatch_meta)(struct mali_cmd_buffer *cmd, const struct mali_
                        const uint32_t (*textures)[8], unsigned texture_count)
 {
    const uint32_t base[3] = {0, 0, 0};
-   dispatch(cmd, cs, NULL, push, push_size, base, groups, textures, texture_count);
+   dispatch(cmd, cs, NULL, push, push_size, base, groups, 0, textures, texture_count);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -161,4 +197,16 @@ MALI_PER_ARCH(CmdDispatchBase)(VkCommandBuffer commandBuffer, uint32_t baseGroup
    MALI_PER_ARCH(cmd_dispatch_shader)(cmd, cmd->compute.shader, &cmd->compute.desc,
                             cmd->push_constants, sizeof(cmd->push_constants),
                             base, groups);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdDispatchIndirect)(VkCommandBuffer commandBuffer, VkBuffer _buffer,
+                                   VkDeviceSize offset)
+{
+   VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
+   VK_FROM_HANDLE(mali_buffer, buffer, _buffer);
+   const uint32_t base[3] = {0, 0, 0};
+   const uint64_t indirect = mali_buffer_gpu_va(buffer, offset);
+   dispatch(cmd, cmd->compute.shader, &cmd->compute.desc, cmd->push_constants,
+            sizeof(cmd->push_constants), base, NULL, indirect, NULL, 0);
 }

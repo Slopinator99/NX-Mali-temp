@@ -86,6 +86,12 @@ struct mali_desc_state {
    struct mali_descriptor_set *sets[MALI_MAX_SETS];
    uint32_t dyn_offsets[MALI_MAX_SETS][MALI_MAX_DYNAMIC_BUFFERS];
    struct mali_descriptor_set push[MALI_MAX_SETS];
+   /* A regular vkCmdBindDescriptorSets snapshots its set here (a copy of
+    * the slots in command memory plus the dynamic-buffer addresses), so a
+    * draw recorded against it keeps reading that memory even if the pool
+    * set is updated or reused while it is still executing — the same
+    * guarantee a push descriptor's fresh block gives. sets[] points here. */
+   struct mali_descriptor_set bound[MALI_MAX_SETS];
 };
 
 /*
@@ -197,6 +203,24 @@ struct mali_render_desc {
    const struct mali_render_blit *blit;
 };
 
+/* The occlusion query currently accumulating samples (mali_cmd_buffer.h's
+ * gfx.occlusion, cleared on begin/end of a query). */
+struct mali_gfx_occlusion {
+   uint64_t ptr;                   /* the query's report address, 0 if none */
+   uint64_t syncobj;               /* its availability address */
+   uint8_t mode;                   /* enum mali_occlusion_mode */
+};
+
+/* An occlusion query's availability address, queued to be signaled once the
+ * pass's fragment job has written its report (the signal must follow that
+ * job, which is issued at pass end, so queries ended during the pass are
+ * collected here and signaled together in mali_cmd_render.c
+ * issue_fragment_jobs). The array is embedded in the render state (host
+ * cached memory, zeroed by cmd_reset_state's memset of cmd->gfx) so it
+ * needs no lifetime management and is never read back from write-combined
+ * command memory. */
+#define MALI_OQ_PENDING_MAX 256
+
 struct mali_render_state {
    bool active;
    /* A draw of the pass copied uniform-buffer words into a FAU block with
@@ -204,6 +228,17 @@ struct mali_render_state {
     * flush_tiling waits for them. */
    bool ubo_stores;
    struct mali_render_desc desc;
+
+   /* Occlusion queries of this pass (panvk's render.oq, with the GPU-linked
+    * list replaced by a CPU array since the signal walk runs at record
+    * time): `last` is the query the fragment job currently writes (its
+    * availability address, 0 if none); `pending[]` are queries ended during
+    * the pass whose availability must be signaled after that job. */
+   struct {
+      uint64_t last;
+      uint32_t count;
+      uint64_t pending[MALI_OQ_PENDING_MAX];
+   } oq;
 
    /* Tile-buffer layout (pan_select_fb_tile_size). */
    uint32_t rt_count;               /* >= 1: the hardware wants one */
@@ -254,7 +289,11 @@ enum mali_gfx_dirty {
    MALI_GFX_DIRTY_VIEWPORT = 1u << 7,   /* scissor box, depth clamps */
    MALI_GFX_DIRTY_INDEX    = 1u << 8,
    MALI_GFX_DIRTY_PASS     = 1u << 9,   /* TILER_CTX, TSD */
-   MALI_GFX_DIRTY_ALL      = (1u << 10) - 1,
+   /* The active occlusion query changed (begin/end): re-emit the OQ report
+    * pointer (IDVS OQ) and the counting-vs-disabled DCD0. Consumed in
+    * prepare_draw (mali_cmd_draw.c). */
+   MALI_GFX_DIRTY_OQ       = 1u << 10,
+   MALI_GFX_DIRTY_ALL      = (1u << 11) - 1,
 };
 
 struct mali_gfx_draw_state {
@@ -499,6 +538,13 @@ enum mali_meta_fs_op {
                                 * copy_src_tex, else a raw surface in memory);
                                 * outside, texture copy_src_tex ? 1 : 0 (the
                                 * target itself). Render target 0 only. */
+   MALI_META_FS_RESOLVE,       /* inside the area: texture 0's resolve at
+                                * the source texel (the fragment's position
+                                * + copy_delta) — the average of its
+                                * resolve_samples samples for a float or
+                                * normalized source, one sample for an
+                                * integer source; outside, fetch texture 1
+                                * (the target itself). Render target 0 only. */
 };
 
 enum mali_meta_fs_type {
@@ -517,7 +563,9 @@ struct mali_meta_fs_key {
    /* COPY on v7 (enum mali_meta_copy_fmt, RAW on v9 and v11): the format
     * an AFBC target is written in (dst) or an AFBC source read in (src). */
    uint8_t copy_dst_fmt, copy_src_fmt;
-   uint8_t pad[1];
+   /* RESOLVE: samples of texture 0 (2, 4, 8 or 16), the count the shader
+    * averages over. */
+   uint8_t resolve_samples;
 };
 
 /*
@@ -562,9 +610,10 @@ struct mali_meta_fs_push {
     * each layer has its own frame shader Draws). Unused on v9 and v11. */
    uint32_t layer;
    uint32_t clear_color[8][4];
-   /* COPY: source block = fragment position + delta (in blocks); a raw
-    * source surface is addressed as the raw compute copy does
-    * (mali_meta_copy_push), its block (0, 0) of layer 0 at copy_src. */
+   /* COPY: source block = fragment position + delta (in blocks); RESOLVE:
+    * source texel = fragment position + delta. A raw source surface is
+    * addressed as the raw compute copy does (mali_meta_copy_push), its
+    * block (0, 0) of layer 0 at copy_src. */
    int32_t copy_delta[2];
    uint32_t copy_row_stride;
    uint32_t copy_tile_shift;

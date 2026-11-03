@@ -159,6 +159,46 @@ fetch(nir_builder *b, unsigned tex, nir_def *xy, nir_def *layer, nir_alu_type ty
    return tex_op(b, nir_texop_txf, tex, c, layer != NULL, type);
 }
 
+/* A multisample texel fetch: sample `sample` of texture `tex` at the
+ * texel position (x, y), GLSL texelFetch on a sampler2DMS. The sample
+ * index reaches the texture unit in the fetch offset register (the z of
+ * its u8vec4 <off_s, off_t, off_r_or_ms_idx, txf_lod>,
+ * pan_nir_lower_tex.c), which selects the sample's slice of the
+ * multisampled surface (mali_image_layout.c: samples are stored like
+ * depth slices). */
+static nir_def *
+fetch_ms(nir_builder *b, unsigned tex, nir_def *xy, nir_def *layer, nir_def *sample,
+         nir_alu_type type)
+{
+   nir_def *c = layer ? nir_vec3(b, nir_channel(b, xy, 0), nir_channel(b, xy, 1), layer) : xy;
+#if PAN_ARCH < 9
+   nir_tex_instr *t = nir_tex_instr_create(b->shader, 2);
+#else
+   nir_tex_instr *t = nir_tex_instr_create(b->shader, 4);
+#endif
+   t->op = nir_texop_txf_ms;
+   t->sampler_dim = GLSL_SAMPLER_DIM_MS;
+   t->is_array = layer != NULL;
+   t->dest_type = type;
+#if PAN_ARCH < 9
+   t->texture_index = tex;
+   t->sampler_index = 0;
+#endif
+   t->coord_components = c->num_components;
+   t->src[0] = nir_tex_src_for_ssa(nir_tex_src_coord, c);
+   t->src[1] = nir_tex_src_for_ssa(nir_tex_src_ms_index, sample);
+#if PAN_ARCH >= 9
+   /* Valhall takes complete handles as sources (pan_nir_lower_tex.c). */
+   t->src[2] = nir_tex_src_for_ssa(nir_tex_src_texture_handle,
+                                   pan_nir_res_handle(b, 0, 1 + tex, NULL));
+   t->src[3] = nir_tex_src_for_ssa(nir_tex_src_sampler_handle,
+                                   pan_nir_res_handle(b, 0, 0, NULL));
+#endif
+   nir_def_init(&t->instr, &t->def, 4, 32);
+   nir_builder_instr_insert(b, &t->instr);
+   return &t->def;
+}
+
 static void
 store_out(nir_builder *b, gl_frag_result loc, const struct glsl_type *type, nir_def *v)
 {
@@ -261,7 +301,8 @@ build_fs(struct mali_device *dev, const struct mali_meta_fs_key *key)
    for (unsigned i = 0; i < 8; i++)
       need_area |= key->rt_op[i] == MALI_META_FS_CLEAR_IN_AREA ||
                    key->rt_op[i] == MALI_META_FS_BLIT ||
-                   key->rt_op[i] == MALI_META_FS_COPY;
+                   key->rt_op[i] == MALI_META_FS_COPY ||
+                   key->rt_op[i] == MALI_META_FS_RESOLVE;
    need_area |= key->z_op == MALI_META_FS_CLEAR_IN_AREA ||
                 key->s_op == MALI_META_FS_CLEAR_IN_AREA;
 #if PAN_ARCH < 9
@@ -300,6 +341,37 @@ build_fs(struct mali_device *dev, const struct mali_meta_fs_key *key)
          nir_def *d = fetch(b, tex + 1, xy, layer, type);
          tex += 2;
          v = nir_bcsel(b, inside, s, d);
+         break;
+      }
+      case MALI_META_FS_RESOLVE: {
+         /* The resolve of texture 0's resolve_samples samples at the
+          * source texel (the fragment's position + copy_delta); outside
+          * the area, fetch texture 1 (the target itself). The fetches
+          * decode the source format and the target's writeback re-encodes
+          * it: for sRGB that resolves in the linear space and writes the
+          * encoded average, the spec's resolve with transfer function. A
+          * float or normalized source takes the average of its samples
+          * (the spec leaves the mode open for these); an integer source
+          * takes one sample's value (the spec's integer resolve). */
+         nir_def *delta = push_load(b, 2, 32, offsetof(struct mali_meta_fs_push, copy_delta));
+         nir_def *sxy = nir_iadd(b, xy, delta);
+         const unsigned samples = key->resolve_samples > 1 ? key->resolve_samples : 1;
+         nir_def *in;
+         if (samples == 1) {
+            in = fetch(b, tex, sxy, layer, type);
+         } else if (type != nir_type_float32) {
+            in = fetch_ms(b, tex, sxy, layer, nir_imm_int(b, 0), type);
+         } else {
+            nir_def *sum = NULL;
+            for (unsigned s = 0; s < samples; s++) {
+               nir_def *t = fetch_ms(b, tex, sxy, layer, nir_imm_int(b, s), type);
+               sum = sum ? nir_fadd(b, sum, t) : t;
+            }
+            in = nir_fmul(b, sum, nir_imm_float(b, 1.0f / (float)samples));
+         }
+         nir_def *d = fetch(b, tex + 1, xy, layer, type);
+         tex += 2;
+         v = nir_bcsel(b, inside, in, d);
          break;
       }
       case MALI_META_FS_COPY: {

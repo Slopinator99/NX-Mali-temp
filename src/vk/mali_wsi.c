@@ -672,6 +672,12 @@ MALI_PER_ARCH(wsi_release)(struct mali_queue *queue, uint32_t count, const VkSem
    uint32_t nfds = 0;
    uint64_t req[MALI_WSI_SYNC_REQ_COUNT] = {0};
 
+   /* TEMP instrumentation (flicker hunt): trace each present's wait
+    * semaphores so a blank-frame present can be correlated with what was
+    * still pending. Remove once the render→present race is pinned. */
+   static uint32_t present_frame;
+   const uint32_t frame = ++present_frame;
+
    /*
     * The blob's release: kcpu waits for every semaphore's payload, then a
     * kcpu FENCE_SIGNAL whose sync file is the release fence. Here the
@@ -697,6 +703,19 @@ MALI_PER_ARCH(wsi_release)(struct mali_queue *queue, uint32_t count, const VkSem
       } else if (s->submitted) {
          for (unsigned j = 0; j < MALI_WSI_SYNC_REQ_COUNT; j++)
             req[j] = MAX2(req[j], s->req[j]);
+      } else {
+         /* Nothing signals this semaphore: the release will not wait for
+          * it, so the frame can go out before the work it covers. Log a
+          * few then stop — a per-present log stalls the present path
+          * (it holds dev->lock) and hangs loading. */
+         static uint32_t logged;
+         if (logged < 8) {
+            logged++;
+            mesa_logw("malisx2: present %u: wait semaphore %u has no signal payload "
+                      "(host=%d submitted=%d fd=%d) — release will not wait; "
+                      "potential premature present", frame, i,
+                      (int)s->host_signaled, (int)s->submitted, s->fd);
+         }
       }
       /* A semaphore nothing signals: invalid usage; the blob waits for
        * nothing then, and so do we. */

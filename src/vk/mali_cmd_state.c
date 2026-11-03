@@ -345,7 +345,29 @@ MALI_PER_ARCH(CmdBindDescriptorSets2KHR)(VkCommandBuffer commandBuffer,
          uint32_t idx = info->firstSet + i;
          VK_FROM_HANDLE(mali_descriptor_set, set, info->pDescriptorSets[i]);
          assert(idx < MALI_MAX_SETS);
-         st->sets[idx] = set;
+         /* Snapshot the set into command memory so a draw recorded here
+          * keeps reading this block even if the pool set is updated or
+          * reused while it is still executing — the same guarantee a push
+          * descriptor's fresh block gives (push_begin). Dynamic-buffer
+          * addresses are copied too, since the draw reads them live. */
+         struct mali_descriptor_set *snap = &st->bound[idx];
+         memset(snap, 0, sizeof(*snap));
+         if (set && set->gpu && set->layout) {
+            const uint32_t size = set->layout->desc_count * MALI_DESCRIPTOR_SIZE;
+            struct mali_ptr p = mali_cmd_alloc(cmd, size, MALI_DESCRIPTOR_SIZE);
+            if (!p.cpu) {
+               vk_command_buffer_set_error(&cmd->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+               return;
+            }
+            memcpy(p.cpu, set->cpu, size);
+            snap->gpu = p.gpu;
+            snap->cpu = p.cpu;
+         }
+         if (set) {
+            snap->layout = set->layout;
+            memcpy(snap->dyn_bufs, set->dyn_bufs, sizeof(snap->dyn_bufs));
+         }
+         st->sets[idx] = snap;
          const struct mali_descriptor_set_layout *sl =
             set ? set->layout :
                   (layout && layout->set_layouts[idx] ?

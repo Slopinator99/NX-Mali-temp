@@ -345,14 +345,26 @@ prepare_draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di, struc
          return false;
       batch_move64(e, IDVS(ZSD), v);
    }
-   if (d->dirty & MALI_GFX_DIRTY_PIPELINE) {
+   const bool oq = cmd->gfx.occlusion.mode != MALI_OCCLUSION_MODE_DISABLED;
+   const uint64_t oq_ptr = cmd->gfx.occlusion.ptr;
+   if (oq && cmd->gfx.occlusion.syncobj != r->oq.last) {
+      /* This draw starts accumulating a different query than the pass's
+       * fragment job was writing (or the first of the pass): the previous
+       * one's report was written by this pass, so wrap it into the pending
+       * list signalled after the job (panvk prepare_oq/wrap_prev_oq). */
+      if (r->oq.last && r->oq.count < MALI_OQ_PENDING_MAX)
+         r->oq.pending[r->oq.count++] = r->oq.last;
+      r->oq.last = cmd->gfx.occlusion.syncobj;
+   }
+
+   if (d->dirty & (MALI_GFX_DIRTY_PIPELINE | MALI_GFX_DIRTY_OQ)) {
       bool lines;
       if (unlikely(dbk)) {
          batch_move64(e, IDVS(SPD_0), dbk->vs_pos_spd);
          batch_move64(e, IDVS(SPD_1), dbk->vs_var_spd);
          batch_move64(e, IDVS(SPD_2), dbk->fs_spd);
          batch_move32(e, IDVS(TILER_FLAGS), dbk->tiler_flags);
-         batch_move32(e, IDVS(DCD0), dbk->dcd0[0]);
+         batch_move32(e, IDVS(DCD0), dbk->dcd0[oq]);
          batch_move32(e, IDVS(DCD1), dbk->dcd1);
          batch_move32(e, IDVS(DCD2), dbk->dcd2);
          lines = u_reduced_prim(dbk->prim) == MESA_PRIM_LINES;
@@ -361,7 +373,7 @@ prepare_draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di, struc
          batch_move64(e, IDVS(SPD_1), bd->spd[1]);
          batch_move64(e, IDVS(SPD_2), bd->spd[2]);
          batch_move32(e, IDVS(TILER_FLAGS), bd->tiler_flags);
-         batch_move32(e, IDVS(DCD0), bd->dcd0);
+         batch_move32(e, IDVS(DCD0), oq ? bd->dcd0_oq : bd->dcd0);
          batch_move32(e, IDVS(DCD1), bd->dcd1);
          batch_move32(e, IDVS(DCD2), bd->dcd2);
          lines = bd->lines;
@@ -371,7 +383,7 @@ prepare_draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di, struc
       /* Point size 1.0 unless the shader writes it; line width. */
       batch_move32(e, IDVS(PRIMITIVE_SIZE), fui(lines ? dyn->rs.line.width : 1.0f));
       batch_move32(e, IDVS(GLOBAL_ATTRIBUTE_OFFSET), 0);
-      batch_move64(e, IDVS(OQ), 0);
+      batch_move64(e, IDVS(OQ), oq ? oq_ptr : 0);
    }
    if (d->dirty & MALI_GFX_DIRTY_VIEWPORT) {
       const VkViewport *vp = &dyn->vp.viewports[0];

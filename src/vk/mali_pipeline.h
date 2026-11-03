@@ -156,6 +156,10 @@ struct mali_gfx_bind {
                                    * on v7 */
    uint32_t tiler_flags;
    uint32_t dcd0, dcd1, dcd2;
+   /* The occlusion-counting DCD0 variant (baked.dcd0[1]) for draws with an
+    * occlusion query active (mali_cmd_query.c; static pipelines only --
+    * dynamic ones repack dcd0 in prepare_draw). */
+   uint32_t dcd0_oq;
    uint32_t vary_size;            /* VARY_SIZE */
    uint32_t tls_size;
    uint32_t noperspective;        /* the fragment shader's noperspective mask */

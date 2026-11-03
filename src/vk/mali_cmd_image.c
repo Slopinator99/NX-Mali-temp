@@ -1075,3 +1075,113 @@ MALI_PER_ARCH(CmdBlitImage2)(VkCommandBuffer commandBuffer, const VkBlitImageInf
 #endif
    }
 }
+
+/*
+ * vkCmdResolveImage2: one meta pass per region on the destination
+ * (MALI_META_FS_RESOLVE), the source's samples averaged at each
+ * destination texel (one sample for an integer source) and the
+ * destination's own texels preserved outside the region. The source
+ * texel for a destination texel is that texel + (srcOffset - dstOffset),
+ * carried in copy_delta; the regions are equal sized (no scaling).
+ * Colour aspects only. Like the blit, the source is read through a
+ * texture descriptor (which carries the source's sample count and, for
+ * v9 and v11, samples as slices), so an sRGB source is resolved in the
+ * linear space and the result re-encoded by the writeback: the resolve
+ * with transfer function the spec asks for.
+ */
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdResolveImage2)(VkCommandBuffer commandBuffer, const VkResolveImageInfo2 *info)
+{
+   VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
+#if PAN_ARCH < 9
+   /* The v7 texture payload addresses samples differently (one surface
+    * per sample); resolves are only implemented on the v9/v11 path. */
+   vk_logw(VK_LOG_OBJS(cmd), "malisx2: image resolves are not supported on this architecture");
+   return;
+#else
+   VK_FROM_HANDLE(mali_image, src, info->srcImage);
+   VK_FROM_HANDLE(mali_image, dst, info->dstImage);
+
+   if (cmd->gfx.render.active)
+      return;
+
+   for (uint32_t i = 0; i < info->regionCount; i++) {
+      const VkImageResolve2 *r = &info->pRegions[i];
+      if (!(r->srcSubresource.aspectMask & VK_IMAGE_ASPECT_COLOR_BIT)) {
+         vk_logw(VK_LOG_OBJS(cmd), "malisx2: depth/stencil resolves are not supported");
+         continue;
+      }
+      const unsigned slevel = r->srcSubresource.mipLevel;
+      const unsigned dlevel = r->dstSubresource.mipLevel;
+      const uint32_t layers = vk_image_subresource_layer_count(&dst->vk, &r->dstSubresource);
+      const enum pipe_format sfmt = src->planes[0].format;
+      const enum pipe_format dfmt = dst->planes[0].format;
+
+      const int32_t sx0 = r->srcOffset.x, sy0 = r->srcOffset.y;
+      const int32_t dx0 = r->dstOffset.x, dy0 = r->dstOffset.y;
+      const int32_t w = (int32_t)r->extent.width, h = (int32_t)r->extent.height;
+      if (w <= 0 || h <= 0)
+         continue;
+
+      struct mali_meta_fs_key key = {
+         .layered = layers > 1,
+         .resolve_samples = MAX2(src->vk.samples, 1),
+      };
+      key.rt_op[0] = MALI_META_FS_RESOLVE;
+      key.rt_type[0] = fs_type(dfmt);
+
+      struct mali_meta_fs_push push = {
+         .area = {dx0, dy0, dx0 + w - 1, dy0 + h - 1},
+      };
+      /* Source texel = destination texel + (srcOffset - dstOffset). */
+      push.copy_delta[0] = sx0 - dx0;
+      push.copy_delta[1] = sy0 - dy0;
+
+      uint32_t tex[2][8];
+      if (!MALI_PER_ARCH(cmd_pack_plane_texture)(cmd, src, 0, sfmt, slevel,
+                                                 r->srcSubresource.baseArrayLayer, layers,
+                                                 tex[0]) ||
+          !MALI_PER_ARCH(cmd_pack_plane_texture)(cmd, dst, 0, dfmt, dlevel,
+                                                 r->dstSubresource.baseArrayLayer, layers,
+                                                 tex[1])) {
+         vk_command_buffer_set_error(&cmd->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         return;
+      }
+      uint32_t sampler[8];
+      pan_cast_and_pack(sampler, SAMPLER, cfg) {
+         cfg.seamless_cube_map = false;
+         cfg.normalized_coordinates = true;
+         cfg.minify_nearest = true;
+         cfg.magnify_nearest = true;
+         cfg.clamp_integer_array_indices = true;
+      }
+
+      const struct mali_render_blit blit = {
+         .key = &key,
+         .push = &push,
+         .textures = (const uint32_t(*)[8])tex,
+         .texture_count = 2,
+         .sampler = sampler,
+      };
+      struct mali_render_desc d = {
+         .width = u_minify(dst->vk.extent.width, dlevel),
+         .height = u_minify(dst->vk.extent.height, dlevel),
+         .area = {{(uint32_t)dx0, (uint32_t)dy0}, {(uint32_t)w, (uint32_t)h}},
+         .layer_count = layers,
+         .rt_count = 1,
+         .blit = &blit,
+      };
+      d.rt[0] = (struct mali_fb_target){
+         .image = dst,
+         .plane = 0,
+         .level = dlevel,
+         .layer = r->dstSubresource.baseArrayLayer,
+         .format = dfmt,
+         .load = MALI_ATT_LOAD_DONT_CARE,
+         .store = true,
+         .always_write = true,
+      };
+      transfer_pass(cmd, &d);
+   }
+#endif
+}

@@ -373,6 +373,9 @@ struct mali_cmd_buffer {
       /* regs/regs_valid are the v11 register record; unused here. */
       struct mali_gfx_draw_state draw;
       struct mali_render_state render;
+      /* True only inside a real vkCmdBeginRendering/vkCmdEndRendering pair
+       * (see mali_cmd_buffer.h): drops out-of-pass draws safely. */
+      bool spec_render_pass;
    } gfx;
 
    /* Cached copies of push descriptor sets (outside gfx/compute, which a

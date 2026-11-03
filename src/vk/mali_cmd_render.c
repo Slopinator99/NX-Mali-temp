@@ -435,6 +435,29 @@ issue_fragment_jobs(struct mali_cmd_buffer *cmd, struct mali_render_state *r,
    cs_move32_to(b, sb_mask, csf->sb.all_iters_mask);
    cs_bit_clear32(b, sb_mask, sb_mask, next_sb);
    cs_set_state(b, MALI_CS_SET_STATE_TYPE_SB_MASK_STREAM, sb_mask);
+
+   /* Occlusion queries ended during this pass: the fragment job above just
+    * wrote their reports, so flush the caches to make the counts visible and
+    * then signal each query's availability. The signals defer on
+    * DEFERRED_FLUSH (the cache flush) and signal DEFERRED_SYNC, so a later
+    * vkGetQueryPoolResults(WAIT) waits for both the flush and the job. */
+   if (r->oq.count) {
+      struct cs_index oq_flush_id = mali_cs_scratch_reg32(b, 8);
+      struct cs_index oq_val = mali_cs_scratch_reg32(b, 9);
+      struct cs_index oq_addr = mali_cs_scratch_reg64(b, 10);
+
+      cs_move32_to(b, oq_flush_id, 0);
+      cs_flush_caches(b, MALI_CS_FLUSH_MODE_CLEAN, MALI_CS_FLUSH_MODE_CLEAN,
+                      MALI_CS_OTHER_FLUSH_MODE_NONE, oq_flush_id,
+                      cs_defer(csf->sb.all_iters_mask, MALI_SB_DEFERRED_FLUSH));
+      cs_move32_to(b, oq_val, 1);
+      for (uint32_t i = 0; i < r->oq.count; i++) {
+         cs_move64_to(b, oq_addr, r->oq.pending[i]);
+         cs_sync32_set(b, true, MALI_CS_SYNC_SCOPE_CSG, oq_val, oq_addr,
+                       cs_defer(MALI_SB_MASK(MALI_SB_DEFERRED_FLUSH),
+                                MALI_SB_DEFERRED_SYNC));
+      }
+   }
 }
 
 void
@@ -443,6 +466,17 @@ MALI_PER_ARCH(cmd_render_end)(struct mali_cmd_buffer *cmd)
    struct mali_render_state *r = &cmd->gfx.render;
    if (!r->active)
       return;
+
+   /* The query the pass's fragment job wrote (oq.last) that is no longer the
+    * active one -- it ended, or a later query superseded it without a draw
+    * (mali_cmd_draw.c prepare_draw wraps those at the toggle): wrap it into
+    * the pending list, signalled after the job in issue_fragment_jobs. A
+    * query still active across the pass (last == active) is not signalled
+    * yet; it carries into the next pass. */
+   if (r->oq.last && r->oq.last != cmd->gfx.occlusion.syncobj &&
+       r->oq.count < MALI_OQ_PENDING_MAX)
+      r->oq.pending[r->oq.count++] = r->oq.last;
+   r->oq.last = 0;
 
    if (MALI_PER_ARCH(fb_pass_has_work)(r) && !vk_command_buffer_has_error(&cmd->vk)) {
       bool ok = mali_fb_alloc_tsd(cmd, r);
@@ -464,6 +498,10 @@ MALI_PER_ARCH(cmd_render_end)(struct mali_cmd_buffer *cmd)
       mali_measure_info(cmd, r->measure_vt, w, h, r->desc.rt_count, r->draws);
       mali_measure_info(cmd, r->measure_frag, w, h, r->desc.rt_count, r->draws);
    }
+
+   /* issue_fragment_jobs signalled the pending queries; start the next
+    * pass's list empty (oq.last was cleared above). */
+   r->oq.count = 0;
 
    r->active = false;
    cmd->gfx.draw.dirty = MALI_GFX_DIRTY_ALL;

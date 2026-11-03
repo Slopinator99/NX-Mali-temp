@@ -1147,11 +1147,13 @@ MALI_PER_ARCH(CmdBeginRendering)(VkCommandBuffer commandBuffer, const VkRenderin
    d.layer_count = MAX2(d.layer_count, 1);
 
    MALI_PER_ARCH(cmd_render_begin)(cmd, &d);
+   cmd->gfx.spec_render_pass = true;
 }
 
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdEndRendering)(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
+   cmd->gfx.spec_render_pass = false;
    MALI_PER_ARCH(cmd_render_end)(cmd);
 }

@@ -176,7 +176,7 @@ malisx2_vk = static_library(
         'vk/mali_sync.c'),
   # Render passes and draws (the CSF side; the shared builders and the
   # image transfers are per-arch files).
-  files('vk/mali_cmd_draw.c', 'vk/mali_cmd_render.c'),
+  files('vk/mali_cmd_draw.c', 'vk/mali_cmd_render.c', 'vk/mali_cmd_query.c'),
   # Sync files and the Android window system; mali_android.c only on Android.
   files('vk/mali_sync_file.c', 'vk/mali_wsi.c'),
   with_platform_android ? files('vk/mali_android.c') : files('vk/mali_wsi_linux.c'),

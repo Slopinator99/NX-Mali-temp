@@ -388,6 +388,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * descriptor set per draw; every arch shares the same descriptor-set
     * code (mali_descriptor_set.c), so this needs no per-arch gate. */
    .KHR_push_descriptor = true,
+
+   /* Instance divisors of any value up to maxVertexAttribDivisor: the
+    * power-of-two and non-power-of-two attribute encodings
+    * (mali_cmd_state.h), the same on v9 and v11. */
+   .EXT_vertex_attribute_divisor = true,
 };
 
 static struct vk_device_extension_table
@@ -516,6 +521,11 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_push_descriptor */
       .pushDescriptor = true,
+
+      /* VK_EXT_vertex_attribute_divisor. Divisor 0 reads the first element
+       * for every instance (mali_cmd_state.h). */
+      .vertexAttributeInstanceRateDivisor = true,
+      .vertexAttributeInstanceRateZeroDivisor = true,
    };
 }
 
@@ -720,6 +730,10 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       /* VK_KHR_push_descriptor. panvk's value; ARMSX2 needs 7 (its TFX
        * texture set). */
       .maxPushDescriptors = 32,
+
+      /* VK_EXT_vertex_attribute_divisor: the 32-bit Divisor D field and the
+       * 5-bit Divisor R field cover every 32-bit divisor. */
+      .maxVertexAttribDivisor = UINT32_MAX,
       .maxPerStageDescriptorSamplers = 1u << 20,
       .maxPerStageDescriptorUniformBuffers = 1u << 20,
       .maxPerStageDescriptorStorageBuffers = 1u << 20,
