@@ -990,28 +990,6 @@ MALI_PER_ARCH(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
          deps.src[vt].wait_sb_mask = 0;
    }
    mali_cmd_emit_barrier(cmd, &deps);
-
-   /* DIAGNOSTIC v17 (flicker hunt): on top of the real barrier, a full
-    * everything-to-everything one with all memory access, outside passes.
-    * If the blank frame survives this, driver-side synchronization is not
-    * the cause. Slow by design; remove after the test. */
-   if (!(cmd->gfx.render.active && cmd->gfx.render.tiler)) {
-      const VkMemoryBarrier2 full = {
-         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-         .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-         .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
-         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-         .dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
-      };
-      const VkDependencyInfo fulldep = {
-         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-         .memoryBarrierCount = 1,
-         .pMemoryBarriers = &full,
-      };
-      struct mali_cs_deps deps2 = {0};
-      mali_cmd_add_deps(cmd, &fulldep, &deps2);
-      mali_cmd_emit_barrier(cmd, &deps2);
-   }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1092,9 +1070,7 @@ MALI_PER_ARCH(CmdWaitEvents2)(VkCommandBuffer commandBuffer, uint32_t eventCount
    const VkMemoryBarrier2 barrier = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
       .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-      .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT, /* v17 diag */
       .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-      .dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT, /* v17 diag */
    };
    const VkDependencyInfo dep = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
