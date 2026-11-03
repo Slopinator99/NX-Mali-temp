@@ -505,7 +505,13 @@ ring_emit(struct mali_csf_device *csf, struct mali_kbase_queue *rq,
    VkResult r = ring_reserve(csf, rq, n);
    if (r != VK_SUCCESS)
       return r;
+   const uint64_t ins0 = rq->insert;
    mali_kbase_queue_write(rq, w->buf, n);
+   /* DIAGNOSTIC v22: log every ring wrap-around, to line up with black frames. */
+   if ((ins0 >> 16) != (rq->insert >> 16))
+      mesa_logw("malisx2: ring-wrap sq=%u wrap#%llu at insert=%llu t=%.3f", sq,
+                (unsigned long long)(rq->insert >> 16), (unsigned long long)rq->insert,
+                os_time_get_nano() / 1e9);
    return VK_SUCCESS;
 }
 
