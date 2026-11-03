@@ -416,6 +416,28 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
    if (!cmd->gfx.spec_render_pass)
       mali_trace_anomaly(cmd, 0, "draw outside spec pass");
    mali_trace_push(cmd, 'D');
+   {
+      /* DIAGNOSTIC v24 */
+      const struct vk_dynamic_graphics_state *dg = &cmd->vk.dynamic_graphics_state;
+      const uint32_t f = mali_dbg_cur % 64;
+      const uint32_t k = __atomic_fetch_add(&mali_dbg_ndraws[f], 1, __ATOMIC_RELAXED);
+      if (k < 24) {
+         struct mali_dbg_draw *rec = &mali_dbg_draws[f][k];
+         rec->pipe = (uint64_t)(uintptr_t)d->pipeline;
+         rec->count = di->count;
+         rec->inst = di->instance_count;
+         rec->first = di->first_index;
+         rec->indexed = di->indexed;
+         rec->vx = dg->vp.viewports[0].x;
+         rec->vy = dg->vp.viewports[0].y;
+         rec->vw = dg->vp.viewports[0].width;
+         rec->vh = dg->vp.viewports[0].height;
+         rec->sx = dg->vp.scissors[0].offset.x;
+         rec->sy = dg->vp.scissors[0].offset.y;
+         rec->sw = dg->vp.scissors[0].extent.width;
+         rec->sh = dg->vp.scissors[0].extent.height;
+      }
+   }
    if (!r->active || !d->pipeline || !d->pipeline->vs) {
       vk_logw(VK_LOG_OBJS(cmd), "malisx2: draw outside a render pass or without a pipeline");
       return;

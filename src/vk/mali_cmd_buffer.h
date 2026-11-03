@@ -263,6 +263,15 @@ void mali_cmd_frag_flush_pending(struct mali_cmd_buffer *cmd);
 extern uint32_t mali_dbg_cur;
 extern uint32_t mali_dbg_n[64];
 extern char mali_dbg_ops[64][64];
+struct mali_dbg_draw {
+   uint64_t pipe;
+   uint32_t count, inst, first, indexed;
+   float vx, vy, vw, vh;
+   int32_t sx, sy;
+   uint32_t sw, sh;
+};
+extern struct mali_dbg_draw mali_dbg_draws[64][24];
+extern uint32_t mali_dbg_ndraws[64];
 static inline void
 mali_trace_push(struct mali_cmd_buffer *cmd, char op)
 {
