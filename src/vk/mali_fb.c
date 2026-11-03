@@ -929,8 +929,7 @@ MALI_PER_ARCH(fb_build)(struct mali_cmd_buffer *cmd, struct mali_render_state *r
     * pass with CRC leaves tiles without geometry alone and does not stamp
     * them (vk_render_smoke part 9), and Always would read back every tile
     * of ARMSX2's full-target passes. The option restores panvk's rule. */
-   /* DIAGNOSTIC v16 (flicker hunt): run every preload on every tile. */
-   const bool always_preload = true;
+   const bool always_preload = clean || (crc && mali_crc_options.always_preload);
 
    uint64_t samples = sample_positions(cmd);
    struct mali_ptr p = mali_cmd_alloc(cmd, (uint64_t)size * layers, 64);
