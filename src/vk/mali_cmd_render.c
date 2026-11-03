@@ -461,6 +461,23 @@ issue_fragment_jobs(struct mali_cmd_buffer *cmd, struct mali_render_state *r,
                                 MALI_SB_DEFERRED_SYNC));
       }
    }
+
+   /* DIAGNOSTIC (flicker hunt, v15): fully serialize after every fragment
+    * job. Wait for all scoreboard slots, then clean+invalidate L2, the
+    * load/store cache and the texture caches, so nothing later (the next
+    * pass, a sampling pass, present) can overtake or read stale data. If the
+    * one-frame blank vanishes, a barrier/dependency is too weak; remove
+    * this and find which. Slow by design. */
+   cs_wait_slots(b, csf->sb.all_mask);
+   {
+      struct cs_index hammer_id = mali_cs_scratch_reg32(b, 8);
+      cs_move32_to(b, hammer_id, 0);
+      cs_flush_caches(b, MALI_CS_FLUSH_MODE_CLEAN_AND_INVALIDATE,
+                      MALI_CS_FLUSH_MODE_CLEAN_AND_INVALIDATE,
+                      MALI_CS_OTHER_FLUSH_MODE_INVALIDATE, hammer_id,
+                      cs_defer(0, MALI_SB_IMM_FLUSH));
+      cs_wait_slot(b, MALI_SB_IMM_FLUSH);
+   }
 }
 
 void
