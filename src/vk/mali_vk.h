@@ -22,6 +22,7 @@
 #include "vk_log.h"
 #include "vk_physical_device.h"
 #include "vk_queue.h"
+#include "vk_sync_timeline.h"
 
 #include "kbase/kbase.h"
 
@@ -83,6 +84,11 @@ struct mali_physical_device {
 
    VkPhysicalDeviceMemoryProperties memory;
    uint64_t timestamp_hz;              /* 0: no timestamps */
+
+   /* VK_KHR_timeline_semaphore, emulated by Mesa's vk_sync_timeline on top of
+    * this arch's binary sync type (panvk does the same on drm syncobjs). */
+   struct vk_sync_timeline_type sync_timeline_type;
+   const struct vk_sync_type *sync_types[3];
 
    /* VK_EXT_memory_budget's heapUsage: bytes in live VkDeviceMemory
     * allocations on this physical device, summed across every VkDevice.

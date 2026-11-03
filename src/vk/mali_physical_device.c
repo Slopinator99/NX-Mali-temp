@@ -393,6 +393,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * power-of-two and non-power-of-two attribute encodings
     * (mali_cmd_state.h), the same on v9 and v11. */
    .EXT_vertex_attribute_divisor = true,
+
+   /* Emulated on binary syncs by the common runtime (pdev->sync_timeline_type).
+    * Eden uses timeline semaphores for its GPU tick tracking when present and
+    * a fence-based fallback otherwise. */
+   .KHR_timeline_semaphore = true,
 };
 
 static struct vk_device_extension_table
@@ -467,6 +472,7 @@ get_features(struct vk_features *f, uint32_t arch)
       .largePoints = true,
       .alphaToOne = false,
       .multiViewport = false,
+      .timelineSemaphore = true,
       /* No minimum revision on v7 or v9: Mesa's model table lists none
        * for the G52, G57 or G68 (it does for the G51 and G72). */
       .samplerAnisotropy = true,
@@ -778,6 +784,7 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       .protectedNoFault = false,
       .maxPerSetDescriptors = UINT16_MAX,
       .maxMemoryAllocationSize = max_alloc,
+      .maxTimelineSemaphoreValueDifference = INT64_MAX,
 
       /* VK_KHR_driver_properties */
       .driverID = VK_DRIVER_ID_ARM_PROPRIETARY,
@@ -1019,9 +1026,16 @@ physical_device_create(struct mali_instance *instance, const char *path,
    vk_physical_device_dispatch_table_from_entrypoints(
       &pdev->vk.dispatch_table, &mali_waist_physical_device_entrypoints, false);
 
-   pdev->vk.supported_sync_types = pdev->arch == 7 ? mali_v7_sync_types
-                                   : pdev->arch == 9 ? mali_v9_sync_types
-                                                     : mali_v11_sync_types;
+   {
+      const struct vk_sync_type *base = (pdev->arch == 7   ? mali_v7_sync_types
+                                         : pdev->arch == 9 ? mali_v9_sync_types
+                                                           : mali_v11_sync_types)[0];
+      pdev->sync_timeline_type = vk_sync_timeline_get_type(base);
+      pdev->sync_types[0] = base;
+      pdev->sync_types[1] = &pdev->sync_timeline_type.sync;
+      pdev->sync_types[2] = NULL;
+      pdev->vk.supported_sync_types = pdev->sync_types;
+   }
 
    /* Compiled shaders are what pipeline caches hold. */
    pdev->vk.pipeline_cache_import_ops = pdev->arch == 7 ? mali_v7_pipeline_cache_import_ops
