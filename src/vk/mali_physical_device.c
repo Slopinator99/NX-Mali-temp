@@ -375,7 +375,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
 
    /* VMA (ARMSX2's allocator) only asks for a memory budget when this is
     * listed. */
-   .EXT_memory_budget = true,
+   /* DIAGNOSTIC v21 (flicker hunt): not advertised. With it, Eden's texture cache
+    * replaces its own size estimate with our heapUsage (all live allocations)
+    * and garbage-collects every frame; without it, Eden uses its estimates,
+    * as with the stock driver. */
+   .EXT_memory_budget = false,
 
    /* Without it ARMSX2 de-indexes every flat-shaded draw on the CPU to
     * fake a last-vertex convention (up to 3x the vertices) instead of
