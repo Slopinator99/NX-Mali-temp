@@ -18,8 +18,15 @@
  * vkQueueSignalReleaseImageANDROID.
  */
 
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/dma-buf.h>
+#include <poll.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/system_properties.h>
@@ -34,6 +41,7 @@
 #include "vk_util.h"
 
 #include "mali_image.h"
+#include "mali_memory.h"
 #include "mali_vk.h"
 #include "mali_wsi.h"
 
@@ -239,11 +247,194 @@ mali_AcquireImageANDROID(VkDevice _device, VkImage image, int nativeFenceFd,
    return mali_wsi_acquire(dev, nativeFenceFd, semaphore, fence);
 }
 
+/* ---------------------------------------------------------------------- */
+/* DIAGNOSTIC: present-time pixel check (flicker hunt)                     */
+
+/*
+ * For every vkQueueSignalReleaseImageANDROID the image's dma-buf, geometry
+ * and release fence are handed to one worker thread. It waits for the fence
+ * (the work covered by the present), maps the buffer read-only and samples a
+ * grid of pixels. All-zero RGB over the grid means the GPU finished the frame
+ * and it is black: that separates "the GPU rendered black" from "the picture
+ * was fine and went black later (buffer hand-off / compositor)". Only black
+ * runs and a periodic summary are logged; the present path itself never
+ * blocks and holds no lock while this runs.
+ */
+#define PCHK_QUEUE 16
+#define PCHK_GRID 24
+
+struct pchk_job {
+   int dmabuf;      /* dup, owned by the job */
+   int fence;       /* dup of the release fence, or -1 */
+   uint32_t width, height, row_stride;
+   uint64_t size;
+};
+
+static struct {
+   pthread_mutex_t lock;
+   pthread_cond_t cond;
+   struct pchk_job q[PCHK_QUEUE];
+   uint32_t head, count;
+   bool started, disabled;
+   /* stats (worker thread only, except dropped/skipped) */
+   uint32_t presents, black, black_run, single_black, nofence, timeouts;
+   uint32_t dropped, skipped, logged;
+} pchk = {
+   .lock = PTHREAD_MUTEX_INITIALIZER,
+   .cond = PTHREAD_COND_INITIALIZER,
+};
+
+static bool
+pchk_sample_black(const struct pchk_job *j, uint32_t *lit_out)
+{
+   void *map = mmap(NULL, j->size, PROT_READ, MAP_SHARED, j->dmabuf, 0);
+   if (map == MAP_FAILED) {
+      if (pchk.logged++ < 3)
+         mesa_logw("malisx2: present-check: mmap of the swapchain dma-buf failed: %s",
+                   strerror(errno));
+      pchk.disabled = true;
+      return false;
+   }
+   struct dma_buf_sync sync = {.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ};
+   ioctl(j->dmabuf, DMA_BUF_IOCTL_SYNC, &sync);
+
+   uint32_t lit = 0;
+   for (uint32_t gy = 0; gy < PCHK_GRID; gy++) {
+      const uint32_t y = (uint64_t)(2 * gy + 1) * j->height / (2 * PCHK_GRID);
+      const uint8_t *row = (const uint8_t *)map + (uint64_t)y * j->row_stride;
+      for (uint32_t gx = 0; gx < PCHK_GRID; gx++) {
+         const uint32_t x = (uint64_t)(2 * gx + 1) * j->width / (2 * PCHK_GRID);
+         const uint8_t *px = row + (uint64_t)x * 4;
+         if (px[0] | px[1] | px[2])
+            lit++;
+      }
+   }
+
+   sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_READ;
+   ioctl(j->dmabuf, DMA_BUF_IOCTL_SYNC, &sync);
+   munmap(map, j->size);
+   *lit_out = lit;
+   return true;
+}
+
+static void *
+pchk_worker(void *arg)
+{
+   for (;;) {
+      pthread_mutex_lock(&pchk.lock);
+      while (!pchk.count)
+         pthread_cond_wait(&pchk.cond, &pchk.lock);
+      struct pchk_job j = pchk.q[pchk.head];
+      pchk.head = (pchk.head + 1) % PCHK_QUEUE;
+      pchk.count--;
+      pthread_mutex_unlock(&pchk.lock);
+
+      bool fence_ok = true;
+      if (j.fence >= 0) {
+         struct pollfd pfd = {.fd = j.fence, .events = POLLIN};
+         const int r = poll(&pfd, 1, 500);
+         if (r <= 0) {
+            fence_ok = false;
+            pchk.timeouts++;
+         }
+         close(j.fence);
+      } else {
+         pchk.nofence++;
+      }
+
+      uint32_t lit = 0;
+      if (!pchk.disabled && fence_ok && pchk_sample_black(&j, &lit)) {
+         pchk.presents++;
+         const bool is_black = lit == 0;
+         if (is_black) {
+            pchk.black++;
+            pchk.black_run++;
+         } else if (pchk.black_run) {
+            if (pchk.black_run == 1)
+               pchk.single_black++;
+            if (pchk.logged++ < 80)
+               mesa_logw("malisx2: present-check: BLACK run of %u presented frame(s) ended "
+                         "at present #%u (lit=%u/%u, single-frame runs so far %u)",
+                         pchk.black_run, pchk.presents, lit, PCHK_GRID * PCHK_GRID,
+                         pchk.single_black);
+            pchk.black_run = 0;
+         }
+         if (pchk.presents % 600 == 0)
+            mesa_logw("malisx2: present-check: presents=%u black=%u single-frame-runs=%u "
+                      "nofence=%u fence-timeouts=%u dropped=%u skipped=%u",
+                      pchk.presents, pchk.black, pchk.single_black, pchk.nofence,
+                      pchk.timeouts, pchk.dropped, pchk.skipped);
+      }
+      close(j.dmabuf);
+   }
+   return NULL;
+}
+
+static void
+pchk_submit(VkImage image, int release_fence)
+{
+   VK_FROM_HANDLE(mali_image, img, image);
+   if (!img || !img->wsi_mem || img->wsi_mem->dmabuf_fd < 0 || pchk.disabled)
+      return;
+   switch (img->vk.format) {
+   case VK_FORMAT_R8G8B8A8_UNORM: case VK_FORMAT_R8G8B8A8_SRGB:
+   case VK_FORMAT_B8G8R8A8_UNORM: case VK_FORMAT_B8G8R8A8_SRGB:
+      break;
+   default:
+      pchk.skipped++;
+      return;
+   }
+   struct pchk_job j = {
+      .dmabuf = fcntl(img->wsi_mem->dmabuf_fd, F_DUPFD_CLOEXEC, 0),
+      .fence = release_fence >= 0 ? fcntl(release_fence, F_DUPFD_CLOEXEC, 0) : -1,
+      .width = img->vk.extent.width,
+      .height = img->vk.extent.height,
+      .row_stride = img->planes[0].layout.slices[0].row_stride,
+      .size = img->size,
+   };
+   if (j.dmabuf < 0 || !j.row_stride || !j.width || !j.height ||
+       (uint64_t)j.row_stride * j.height > j.size) {
+      if (j.dmabuf >= 0)
+         close(j.dmabuf);
+      if (j.fence >= 0)
+         close(j.fence);
+      pchk.skipped++;
+      return;
+   }
+
+   pthread_mutex_lock(&pchk.lock);
+   if (!pchk.started) {
+      pthread_t t;
+      if (pthread_create(&t, NULL, pchk_worker, NULL) == 0) {
+         pthread_detach(t);
+         pchk.started = true;
+      } else {
+         pchk.disabled = true;
+      }
+   }
+   if (pchk.disabled || pchk.count == PCHK_QUEUE) {
+      pchk.dropped++;
+      pthread_mutex_unlock(&pchk.lock);
+      close(j.dmabuf);
+      if (j.fence >= 0)
+         close(j.fence);
+      return;
+   }
+   pchk.q[(pchk.head + pchk.count) % PCHK_QUEUE] = j;
+   pchk.count++;
+   pthread_cond_signal(&pchk.cond);
+   pthread_mutex_unlock(&pchk.lock);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 mali_QueueSignalReleaseImageANDROID(VkQueue _queue, uint32_t waitSemaphoreCount,
                                     const VkSemaphore *pWaitSemaphores, VkImage image,
                                     int *pNativeFenceFd)
 {
    VK_FROM_HANDLE(mali_queue, queue, _queue);
-   return mali_wsi_release(queue, waitSemaphoreCount, pWaitSemaphores, pNativeFenceFd);
+   const VkResult result =
+      mali_wsi_release(queue, waitSemaphoreCount, pWaitSemaphores, pNativeFenceFd);
+   if (result == VK_SUCCESS)
+      pchk_submit(image, pNativeFenceFd ? *pNativeFenceFd : -1);
+   return result;
 }
