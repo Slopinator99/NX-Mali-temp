@@ -53,9 +53,6 @@
 void
 MALI_PER_ARCH(cmd_render_begin)(struct mali_cmd_buffer *cmd, const struct mali_render_desc *desc)
 {
-   if (cmd->gfx.render.active)
-      mali_trace_anomaly(cmd, 4, "render_begin while render.active");
-   mali_trace_push(cmd, 'b');
    const bool any_preload = MALI_PER_ARCH(fb_begin)(cmd, desc);
 
    if (any_preload) {
@@ -460,6 +457,20 @@ issue_fragment_jobs(struct mali_cmd_buffer *cmd, struct mali_render_state *r,
                        cs_defer(MALI_SB_MASK(MALI_SB_DEFERRED_FLUSH),
                                 MALI_SB_DEFERRED_SYNC));
       }
+   } else {
+      /* No queries in this pass, but the fragment job still wrote the
+       * render-target pixels. Flush the caches so those writes are visible
+       * in main memory before the job's completion is signalled (the release
+       * fence / a CPU reader of the swapchain dma-buf). Without this the
+       * fence can fire while the pixels are still in the L2/LSC cache, and a
+       * present then reads a stale/black frame (the one-frame blank). The
+       * proprietary driver forces a cache maintenance step at RUN_FRAGMENT
+       * for the same reason (see the panvk comment on IMPLICIT_OTHERS_INV). */
+      struct cs_index wb_flush_id = mali_cs_scratch_reg32(b, 8);
+      cs_move32_to(b, wb_flush_id, 0);
+      cs_flush_caches(b, MALI_CS_FLUSH_MODE_CLEAN, MALI_CS_FLUSH_MODE_CLEAN,
+                      MALI_CS_OTHER_FLUSH_MODE_NONE, wb_flush_id,
+                      cs_defer(csf->sb.all_iters_mask, MALI_SB_DEFERRED_FLUSH));
    }
 }
 
@@ -467,7 +478,6 @@ void
 MALI_PER_ARCH(cmd_render_end)(struct mali_cmd_buffer *cmd)
 {
    struct mali_render_state *r = &cmd->gfx.render;
-   mali_trace_push(cmd, r->active ? 'e' : 'x');
    if (!r->active)
       return;
 

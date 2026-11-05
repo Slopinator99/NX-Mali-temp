@@ -31,6 +31,7 @@
 #include "mali_cmd_state.h"
 #include "mali_measure.h"
 
+#include "util/log.h"
 #include "vk_log.h"
 
 #include "mali_arch.h"
@@ -413,30 +414,60 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
 
    if (!di->count || !di->instance_count)
       return;
-   if (!cmd->gfx.spec_render_pass)
-      mali_trace_anomaly(cmd, 0, "draw outside spec pass");
-   mali_trace_push(cmd, 'D');
-   {
-      /* DIAGNOSTIC v24 */
-      const struct vk_dynamic_graphics_state *dg = &cmd->vk.dynamic_graphics_state;
-      const uint32_t f = mali_dbg_cur % 64;
-      const uint32_t k = __atomic_fetch_add(&mali_dbg_ndraws[f], 1, __ATOMIC_RELAXED);
-      if (k < 24) {
-         struct mali_dbg_draw *rec = &mali_dbg_draws[f][k];
-         rec->pipe = (uint64_t)(uintptr_t)d->pipeline;
-         rec->count = di->count;
-         rec->inst = di->instance_count;
-         rec->first = di->first_index;
-         rec->indexed = di->indexed;
-         rec->vx = dg->vp.viewports[0].x;
-         rec->vy = dg->vp.viewports[0].y;
-         rec->vw = dg->vp.viewports[0].width;
-         rec->vh = dg->vp.viewports[0].height;
-         rec->sx = dg->vp.scissors[0].offset.x;
-         rec->sy = dg->vp.scissors[0].offset.y;
-         rec->sw = dg->vp.scissors[0].extent.width;
-         rec->sh = dg->vp.scissors[0].extent.height;
+   /* DIAG v28: per-draw state hash (pipeline + blend + descriptor snapshot),
+    * accumulated and dumped at EndCommandBuffer to localize the flicker. */
+   if (cmd->diag_dn < 96) {
+      uint64_t h = (uint64_t)(uintptr_t)d->pipeline * 0x9e3779b97f4a7c15ULL;
+      h ^= ((uint64_t)di->count << 32) | (uint64_t)di->instance_count;
+      for (int i = 0; i < 8; i++)
+         h = h * 0x100000001b3ULL ^ d->blend_descs[i];
+      const uint8_t *dp = (const uint8_t *)cmd->gfx.desc.bound;
+      for (size_t i = 0; i < sizeof(cmd->gfx.desc.bound); i++)
+         h = h * 0x100000001b3ULL ^ dp[i];
+      /* DIAG v29: push-constant content too (an animated shadow opacity/color
+       * would live here or in a uniform; descriptor-pointer hashing misses it). */
+      const uint8_t *pc = (const uint8_t *)cmd->push_constants;
+      for (size_t i = 0; i < MALI_MAX_PUSH_CONSTANTS_SIZE; i++)
+         h = h * 0x100000001b3ULL ^ pc[i];
+      /* DIAG v30: bound dynamic-uniform *content* (the fragment FAU words come
+       * from these buffers). An animated shadow value rewrites this memory even
+       * when pipeline/blend/descriptor/push-constant state is byte-identical —
+       * the one remaining fork. Only uniform (not storage) dyn buffers, capped
+       * so a huge SSBO can't stall recording. */
+      for (unsigned s = 0; s < MALI_MAX_SETS; s++) {
+         const struct mali_descriptor_set *bset = cmd->gfx.desc.bound[s].layout
+                                                    ? &cmd->gfx.desc.bound[s]
+                                                    : NULL;
+         if (!bset || !bset->layout)
+            continue;
+         const uint32_t ndyn = bset->layout->dyn_buf_count;
+         for (uint32_t d = 0; d < ndyn && d < MALI_MAX_DYNAMIC_BUFFERS; d++) {
+            /* dyn_ssbos bit d set => storage buffer; skip those. */
+            if (bset->layout->dyn_ssbos & (1u << d))
+               continue;
+            const uint8_t *up = (const uint8_t *)bset->dyn_bufs[d].cpu;
+            uint64_t urange = bset->dyn_bufs[d].range;
+            if (!up || !urange)
+               continue;
+            if (urange > 4096)
+               urange = 4096;   /* uniforms are small; cap for safety */
+            for (uint64_t i = 0; i < urange; i++)
+               h = h * 0x100000001b3ULL ^ up[i];
+         }
       }
+      cmd->diag_dh[cmd->diag_dn++] = h;
+   }
+   /* DIAG v27: pin out-of-pass app draws (suspected every-27-frame flicker).
+    * spec_render_pass is false outside the real Begin/EndRendering window, so
+    * this catches a draw the game issues after the pass ended. Log sparsely. */
+   if (!cmd->gfx.spec_render_pass) {
+      static uint32_t oop_seq = 0;
+      uint32_t s = oop_seq++;
+      if (s < 40 || (s % 50) == 0)
+         mesa_logw("malisx2: OOP-DRAW seq=%u active=%d pipe=%d cnt=%u inst=%u idx=%d %s",
+                   s, r->active ? 1 : 0, (d->pipeline && d->pipeline->vs) ? 1 : 0,
+                   di->count, di->instance_count, di->indexed ? 1 : 0,
+                   r->active ? "STALE" : "DROP");
    }
    if (!r->active || !d->pipeline || !d->pipeline->vs) {
       vk_logw(VK_LOG_OBJS(cmd), "malisx2: draw outside a render pass or without a pipeline");

@@ -306,9 +306,16 @@ write_dynamic_buffer(struct mali_descriptor_set *set, const VkDescriptorBufferIn
    if (buffer) {
       set->dyn_bufs[idx].addr = mali_buffer_gpu_va(buffer, info->offset);
       set->dyn_bufs[idx].range = vk_buffer_range(&buffer->vk, info->offset, info->range);
+      /* DIAG v30: host mapping of the bound bytes, so a draw can hash the
+       * uniform's content (see mali_descriptor_set.h). */
+      set->dyn_bufs[idx].cpu =
+         (buffer->mem && buffer->mem->bo.cpu)
+            ? (uint8_t *)buffer->mem->bo.cpu + buffer->mem_offset + info->offset
+            : NULL;
    } else {
       set->dyn_bufs[idx].addr = MALI_NULL_BUFFER_ADDR;
       set->dyn_bufs[idx].range = 0;
+      set->dyn_bufs[idx].cpu = NULL;
    }
 }
 

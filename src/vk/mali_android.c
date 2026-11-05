@@ -262,10 +262,6 @@ mali_AcquireImageANDROID(VkDevice _device, VkImage image, int nativeFenceFd,
  * blocks and holds no lock while this runs.
  */
 uint32_t mali_dbg_cur;
-uint32_t mali_dbg_n[64];
-char mali_dbg_ops[64][64];
-struct mali_dbg_draw mali_dbg_draws[64][24];
-uint32_t mali_dbg_ndraws[64];
 uint32_t mali_dbg_ev[64][10];
 
 #define PCHK_QUEUE 16
@@ -365,26 +361,11 @@ pchk_worker(void *arg)
                if (pchk.single_black <= 12) {
                   for (int d = -2; d <= 0; d++) {
                      const uint32_t sq = prev_seq + d;
-                     char buf[65] = {0};
-                     const uint32_t n = mali_dbg_n[sq % 64];
-                     memcpy(buf, mali_dbg_ops[sq % 64], n < 63 ? n : 63);
-                     mesa_logw("malisx2: pchk-ops frame seq=%u (%s) n=%u ops=%s", sq,
-                               d == 0 ? "BLACK" : "neighbour", n, buf);
                      {
                         const uint32_t *ev = mali_dbg_ev[sq % 64];
                         mesa_logw("malisx2: pchk-ev seq=%u %s img+%u/-%u view+%u/-%u mem+%u/-%u buf+%u/-%u flush=%u bind=%u",
                                   sq, d == 0 ? "BLACK" : "ok", ev[0], ev[1], ev[2], ev[3], ev[4],
                                   ev[5], ev[6], ev[7], ev[8], ev[9]);
-                     }
-                     if (false) {
-                        const uint32_t nd = mali_dbg_ndraws[sq % 64];
-                        for (uint32_t i = 0; i < nd && i < 24; i++) {
-                           const struct mali_dbg_draw *r = &mali_dbg_draws[sq % 64][i];
-                           mesa_logw("malisx2: pchk-draw seq=%u %s #%u pipe=%llx cnt=%u inst=%u first=%u idx=%u vp=%.0f,%.0f,%.0f,%.0f sc=%d,%d,%u,%u",
-                                     sq, d == 0 ? "BLACK" : "ok", i, (unsigned long long)r->pipe,
-                                     r->count, r->inst, r->first, r->indexed, r->vx, r->vy, r->vw, r->vh,
-                                     r->sx, r->sy, r->sw, r->sh);
-                        }
                      }
                   }
                }
@@ -423,8 +404,6 @@ pchk_submit(VkImage image, int release_fence)
       return;
    }
    const uint32_t cur_seq = mali_dbg_cur;
-   mali_dbg_n[(cur_seq + 1) % 64] = 0;
-   mali_dbg_ndraws[(cur_seq + 1) % 64] = 0;
    memset(mali_dbg_ev[(cur_seq + 1) % 64], 0, sizeof(mali_dbg_ev[0]));
    __atomic_store_n(&mali_dbg_cur, cur_seq + 1, __ATOMIC_RELAXED);
    struct pchk_job j = {

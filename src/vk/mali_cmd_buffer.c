@@ -327,6 +327,7 @@ MALI_PER_ARCH(BeginCommandBuffer)(VkCommandBuffer commandBuffer,
    /* Resets a command buffer recorded before (implicit reset). */
    vk_command_buffer_begin(&cmd->vk, pBeginInfo);
    cmd->usage = pBeginInfo->flags;
+   cmd->diag_dn = 0; /* DIAG v28 */
    /* The recorded streams are not patched at submit (the per-submit words
     * live in the ring), so SIMULTANEOUS_USE needs nothing more; the blob
     * re-records those at every submit instead. */
@@ -382,6 +383,29 @@ VKAPI_ATTR VkResult VKAPI_CALL
 MALI_PER_ARCH(EndCommandBuffer)(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
+
+   /* DIAG v28: dump per-draw hashes when they change (flicker localization).
+    * The idle scene records identical draws each frame, so a draw whose hash
+    * changes on the ~27-frame pulse is the culprit. Rate-limited. */
+   if (cmd->diag_dn) {
+      static uint64_t prev_hh = 0;
+      static uint32_t cb_seq = 0, logged = 0;
+      uint64_t hh = 0;
+      for (uint32_t i = 0; i < cmd->diag_dn; i++)
+         hh = hh * 0x100000001b3ULL ^ cmd->diag_dh[i];
+      uint32_t s = cb_seq++;
+      if (logged < 60 && (s < 5 || hh != prev_hh)) {
+         char buf[2048];
+         int pos = 0;
+         for (uint32_t i = 0; i < cmd->diag_dn && pos < (int)sizeof(buf) - 20; i++)
+            pos += snprintf(buf + pos, sizeof(buf) - pos, " %08x",
+                            (unsigned)(cmd->diag_dh[i] & 0xffffffffu));
+         mesa_logw("malisx2: DIAG-CB seq=%u n=%u h=%08x:%s", s, cmd->diag_dn,
+                   (unsigned)(hh & 0xffffffffu), buf);
+         logged++;
+      }
+      prev_hh = hh;
+   }
 
    /* Waits the compute subqueue put off until it records work are left
     * to the queue: its next work waits for everything recorded here
@@ -1086,27 +1110,4 @@ MALI_PER_ARCH(CmdWaitEvents2)(VkCommandBuffer commandBuffer, uint32_t eventCount
        pDependencyInfo->bufferMemoryBarrierCount ||
        pDependencyInfo->imageMemoryBarrierCount)
       MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, pDependencyInfo);
-}
-
-/* Diagnostic: report a command that reaches the driver outside a real
- * vkCmdBeginRendering window, with the last pass-state commands that led
- * there. Budget per kind (0 draw, 1 clear, 2 query begin, 3 query end, 4
- * nesting) keeps it cheap; nothing is logged on the normal path. */
-void
-mali_trace_anomaly(struct mali_cmd_buffer *cmd, unsigned kind, const char *what)
-{
-   static uint32_t budget[5];
-   if (kind >= 5 || __atomic_fetch_add(&budget[kind], 1, __ATOMIC_RELAXED) >= 25)
-      return;
-
-   char hist[25];
-   uint32_t n = cmd->gfx.trace.n, cnt = n < 24 ? n : 24;
-   for (uint32_t i = 0; i < cnt; i++)
-      hist[i] = cmd->gfx.trace.ops[(n - cnt + i) % 24];
-   hist[cnt] = 0;
-
-   vk_logw(VK_LOG_OBJS(cmd),
-           "malisx2-trace: %s cmd=%p spec=%d active=%d oq.mode=%d hist=[%s]", what, (void *)cmd,
-           cmd->gfx.spec_render_pass, cmd->gfx.render.active, cmd->gfx.occlusion.mode,
-           hist);
 }

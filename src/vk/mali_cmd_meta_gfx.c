@@ -53,6 +53,7 @@
 #include "compiler/nir/nir_builder.h"
 #include "util/format/u_format.h"
 #include "util/mesa-blake3.h"
+#include "util/log.h"
 #include "vk_pipeline.h"
 
 #include "panfrost/compiler/pan_compiler.h"
@@ -1277,11 +1278,23 @@ MALI_PER_ARCH(CmdClearAttachments)(VkCommandBuffer commandBuffer, uint32_t attac
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    struct mali_render_state *r = &cmd->gfx.render;
 
-#if PAN_ARCH >= 10
-   if (!cmd->gfx.spec_render_pass)
-      mali_trace_anomaly(cmd, 1, "ClearAttachments outside spec pass");
-   mali_trace_push(cmd, 'C');
-#endif
+   /* DIAG v27: pin out-of-pass app clears (suspected every-27-frame flicker). */
+   if (!cmd->gfx.spec_render_pass) {
+      static uint32_t oop_seq = 0;
+      uint32_t s = oop_seq++;
+      if (s < 40 || (s % 50) == 0) {
+         float cr = 0, cg = 0, cb = 0, ca = 0;
+         if (attachmentCount && (pAttachments[0].aspectMask & VK_IMAGE_ASPECT_COLOR_BIT)) {
+            cr = pAttachments[0].clearValue.color.float32[0];
+            cg = pAttachments[0].clearValue.color.float32[1];
+            cb = pAttachments[0].clearValue.color.float32[2];
+            ca = pAttachments[0].clearValue.color.float32[3];
+         }
+         mesa_logw("malisx2: OOP-CLEAR seq=%u active=%d rect=%u att=%u c=%.3f,%.3f,%.3f,%.3f %s",
+                   s, r->active ? 1 : 0, rectCount, attachmentCount, cr, cg, cb, ca,
+                   r->active ? "STALE" : "DROP");
+      }
+   }
    if (!r->active || !rectCount || vk_command_buffer_has_error(&cmd->vk))
       return;
 

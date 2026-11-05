@@ -81,6 +81,12 @@ struct mali_descriptor_set {
    struct {
       uint64_t addr;
       uint64_t range;
+      /* DIAG v30: the buffer's host mapping (bo.cpu + mem_offset + offset),
+       * stashed when the descriptor is written so a draw can hash the bound
+       * uniform's *content* — the fragment FAU words come from here, and an
+       * animated shadow value changes this even when every address and all
+       * draw state are static. NULL when the memory has no CPU mapping. */
+      void *cpu;
    } dyn_bufs[MALI_MAX_DYNAMIC_BUFFERS];
 };
 
