@@ -335,7 +335,7 @@ pchk_worker(void *arg)
 {
    uint32_t prev_seq = 0;
    uint64_t la[3] = {0, 0, 0};
-   uint32_t pulses = 0;
+   uint32_t pulses = 0, win_left = 0, win_done = 0;
    for (;;) {
       pthread_mutex_lock(&pchk.lock);
       while (!pchk.count)
@@ -363,10 +363,30 @@ pchk_worker(void *arg)
       if (!pchk.disabled && fence_ok && pchk_sample_black(&j, &lit, &luma)) {
          /* DIAG v32: a frame brighter/darker than both neighbours (which agree). */
          la[0] = la[1]; la[1] = la[2]; la[2] = luma;
+         if (win_left) {
+            win_left--;
+            const uint32_t sq = prev_seq;
+            const uint32_t ncp = mali_dbg_ncp[sq % 64] < 64 ? mali_dbg_ncp[sq % 64] : 64;
+            for (uint32_t q = 0; q < ncp; q += 6) {
+               char line[256];
+               int pos = 0;
+               for (uint32_t z = q; z < q + 6 && z < ncp; z++)
+                  pos += snprintf(line + pos, sizeof(line) - pos, " %08x:%x:%08x",
+                                  mali_dbg_cp[sq % 64][z].key, mali_dbg_cp[sq % 64][z].size,
+                                  mali_dbg_cp[sq % 64][z].hash);
+               mesa_logw("malisx2: pchk-cpw seq=%u luma=%llu #%u%s", sq,
+                         (unsigned long long)la[1], q, line);
+            }
+         }
          if (la[0] && la[1] && la[2]) {
             const double ref = (double)(la[0] + la[2]) / 2.0;
             const double side = fabs((double)la[0] - (double)la[2]) / ref;
             const double dev = ((double)la[1] - ref) / ref;
+            if (side < 0.004 && fabs(dev) > 0.008 && fabs(dev) < 0.5 && !win_done &&
+                pchk.presents > 4200) {
+               win_done = 1;
+               win_left = 70;
+            }
             if (side < 0.004 && fabs(dev) > 0.008 && fabs(dev) < 0.5 && pulses++ < 40) {
                mesa_logw("malisx2: pchk-pulse present#%u dev=%+.2f%% (sum %llu vs %llu/%llu) frame seq=%u",
                          pchk.presents + 1, dev * 100.0, (unsigned long long)la[1],
