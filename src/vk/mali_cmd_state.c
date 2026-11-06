@@ -311,6 +311,7 @@ VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdBindPipeline)(VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint,
                                VkPipeline _pipeline)
 {
+   MALI_DBG_EV(19);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(vk_pipeline, pipeline, _pipeline);
    assert(pipeline->bind_point == pipelineBindPoint);

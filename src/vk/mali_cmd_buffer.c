@@ -995,6 +995,7 @@ VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
                                    const VkDependencyInfo *pDependencyInfo)
 {
+   MALI_DBG_EV(18);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    struct mali_cs_deps deps = {0};
    mali_cmd_add_deps(cmd, pDependencyInfo, &deps);

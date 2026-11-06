@@ -1275,6 +1275,7 @@ MALI_PER_ARCH(CmdClearAttachments)(VkCommandBuffer commandBuffer, uint32_t attac
                                    const VkClearAttachment *pAttachments, uint32_t rectCount,
                                    const VkClearRect *pRects)
 {
+   MALI_DBG_EV(21);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    struct mali_render_state *r = &cmd->gfx.render;
 

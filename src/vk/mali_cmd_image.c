@@ -512,6 +512,7 @@ copy_on_fragment(struct mali_cmd_buffer *cmd, const struct mali_image *src,
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdCopyImage2)(VkCommandBuffer commandBuffer, const VkCopyImageInfo2 *info)
 {
+   MALI_DBG_EV(12);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_image, src, info->srcImage);
    VK_FROM_HANDLE(mali_image, dst, info->dstImage);
@@ -573,6 +574,7 @@ MALI_PER_ARCH(CmdCopyImage2)(VkCommandBuffer commandBuffer, const VkCopyImageInf
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdCopyBufferToImage2)(VkCommandBuffer commandBuffer, const VkCopyBufferToImageInfo2 *info)
 {
+   MALI_DBG_EV(11);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(vk_buffer, buf, info->srcBuffer);
    VK_FROM_HANDLE(mali_image, img, info->dstImage);
@@ -609,6 +611,7 @@ MALI_PER_ARCH(CmdCopyBufferToImage2)(VkCommandBuffer commandBuffer, const VkCopy
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdCopyImageToBuffer2)(VkCommandBuffer commandBuffer, const VkCopyImageToBufferInfo2 *info)
 {
+   MALI_DBG_EV(22);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_image, img, info->srcImage);
    VK_FROM_HANDLE(vk_buffer, buf, info->dstBuffer);
@@ -669,6 +672,7 @@ MALI_PER_ARCH(CmdClearColorImage)(VkCommandBuffer commandBuffer, VkImage image,
                                   VkImageLayout imageLayout, const VkClearColorValue *pColor,
                                   uint32_t rangeCount, const VkImageSubresourceRange *pRanges)
 {
+   MALI_DBG_EV(14);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_image, img, image);
    const enum pipe_format format = img->planes[0].format;
@@ -979,6 +983,7 @@ blit_region_v7(struct mali_cmd_buffer *cmd, const struct mali_image *src,
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdBlitImage2)(VkCommandBuffer commandBuffer, const VkBlitImageInfo2 *info)
 {
+   MALI_DBG_EV(13);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_image, src, info->srcImage);
    VK_FROM_HANDLE(mali_image, dst, info->dstImage);
@@ -1092,6 +1097,7 @@ MALI_PER_ARCH(CmdBlitImage2)(VkCommandBuffer commandBuffer, const VkBlitImageInf
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdResolveImage2)(VkCommandBuffer commandBuffer, const VkResolveImageInfo2 *info)
 {
+   MALI_DBG_EV(23);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
 #if PAN_ARCH < 9
    /* The v7 texture payload addresses samples differently (one surface

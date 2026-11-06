@@ -263,7 +263,7 @@ mali_AcquireImageANDROID(VkDevice _device, VkImage image, int nativeFenceFd,
  * blocks and holds no lock while this runs.
  */
 uint32_t mali_dbg_cur;
-uint32_t mali_dbg_ev[64][10];
+uint32_t mali_dbg_ev[64][24];
 uint32_t mali_dbg_cb[64][8];
 uint32_t mali_dbg_ncb[64];
 
@@ -371,6 +371,15 @@ pchk_worker(void *arg)
                          (unsigned long long)la[0], (unsigned long long)la[2], prev_seq);
                for (int d = -2; d <= 1; d++) {
                   const uint32_t sq = prev_seq + d;
+                  {
+                     const uint32_t *e = mali_dbg_ev[sq % 64];
+                     mesa_logw("malisx2: pchk-pulse-ev seq=%u %s img+%u/-%u view+%u/-%u mem+%u/-%u buf+%u/-%u "
+                               "flush=%u bind=%u cpbuf=%u buf2img=%u cpimg=%u blit=%u clrimg=%u disp=%u "
+                               "fill=%u upd=%u barr=%u bindpipe=%u beginrend=%u clratt=%u img2buf=%u resolve=%u",
+                               sq, d == 0 ? "PULSE" : "ok", e[0], e[1], e[2], e[3], e[4], e[5], e[6],
+                               e[7], e[8], e[9], e[10], e[11], e[12], e[13], e[14], e[15], e[16],
+                               e[17], e[18], e[19], e[20], e[21], e[22], e[23]);
+                  }
                   const uint32_t *c = mali_dbg_cb[sq % 64];
                   mesa_logw("malisx2: pchk-pulse-cb seq=%u %s n=%u: %08x %08x %08x %08x %08x %08x",
                             sq, d == 0 ? "PULSE" : "ok", mali_dbg_ncb[sq % 64], c[0], c[1], c[2],

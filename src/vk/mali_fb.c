@@ -1076,6 +1076,7 @@ set_target(struct mali_fb_target *t, const struct mali_image_view *view, unsigne
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdBeginRendering)(VkCommandBuffer commandBuffer, const VkRenderingInfo *info)
 {
+   MALI_DBG_EV(20);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    struct mali_render_desc d = {
       .area = info->renderArea,

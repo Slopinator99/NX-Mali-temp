@@ -231,6 +231,7 @@ record_copy(struct mali_cmd_buffer *cmd, uint64_t src, uint64_t dst, uint64_t si
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdCopyBuffer2)(VkCommandBuffer commandBuffer, const VkCopyBufferInfo2 *info)
 {
+   MALI_DBG_EV(10);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(vk_buffer, src, info->srcBuffer);
    VK_FROM_HANDLE(vk_buffer, dst, info->dstBuffer);
@@ -247,6 +248,7 @@ VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdFillBuffer)(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
                              VkDeviceSize dstOffset, VkDeviceSize size, uint32_t data)
 {
+   MALI_DBG_EV(16);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(vk_buffer, dst, dstBuffer);
 
@@ -268,6 +270,7 @@ MALI_PER_ARCH(CmdUpdateBuffer)(VkCommandBuffer commandBuffer, VkBuffer dstBuffer
                                VkDeviceSize dstOffset, VkDeviceSize dataSize,
                                const void *pData)
 {
+   MALI_DBG_EV(17);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(vk_buffer, dst, dstBuffer);
 

@@ -191,6 +191,7 @@ MALI_PER_ARCH(CmdDispatchBase)(VkCommandBuffer commandBuffer, uint32_t baseGroup
                                uint32_t groupCountX, uint32_t groupCountY,
                                uint32_t groupCountZ)
 {
+   MALI_DBG_EV(15);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    const uint32_t base[3] = {baseGroupX, baseGroupY, baseGroupZ};
    const uint32_t groups[3] = {groupCountX, groupCountY, groupCountZ};
