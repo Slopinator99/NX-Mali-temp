@@ -335,7 +335,7 @@ pchk_worker(void *arg)
 {
    uint32_t prev_seq = 0;
    uint64_t la[3] = {0, 0, 0};
-   uint32_t pulses = 0, win_left = 0, win_done = 0;
+   uint32_t pulses = 0, win_left = 0, win_done = 0, last_pp = 0, streak = 0;
    for (;;) {
       pthread_mutex_lock(&pchk.lock);
       while (!pchk.count)
@@ -382,10 +382,16 @@ pchk_worker(void *arg)
             const double ref = (double)(la[0] + la[2]) / 2.0;
             const double side = fabs((double)la[0] - (double)la[2]) / ref;
             const double dev = ((double)la[1] - ref) / ref;
-            if (side < 0.004 && fabs(dev) > 0.008 && fabs(dev) < 0.5 && !win_done &&
-                pchk.presents > 4200) {
-               win_done = 1;
-               win_left = 70;
+            if (side < 0.004 && fabs(dev) > 0.008 && fabs(dev) < 0.5) {
+               /* Open the dump window only on the third pulse in a row that is
+                * exactly 27 presents after the last (not on a fade). */
+               const uint32_t pp = pchk.presents + 1;
+               streak = (last_pp && pp - last_pp == 27) ? streak + 1 : 0;
+               last_pp = pp;
+               if (streak >= 3 && !win_done) {
+                  win_done = 1;
+                  win_left = 70;
+               }
             }
             if (side < 0.004 && fabs(dev) > 0.008 && fabs(dev) < 0.5 && pulses++ < 40) {
                mesa_logw("malisx2: pchk-pulse present#%u dev=%+.2f%% (sum %llu vs %llu/%llu) frame seq=%u",
