@@ -19,6 +19,7 @@
  */
 
 #include <errno.h>
+#include <math.h>
 #include <fcntl.h>
 #include <linux/dma-buf.h>
 #include <poll.h>
@@ -263,6 +264,8 @@ mali_AcquireImageANDROID(VkDevice _device, VkImage image, int nativeFenceFd,
  */
 uint32_t mali_dbg_cur;
 uint32_t mali_dbg_ev[64][10];
+uint32_t mali_dbg_cb[64][8];
+uint32_t mali_dbg_ncb[64];
 
 #define PCHK_QUEUE 16
 #define PCHK_GRID 24
@@ -290,7 +293,7 @@ static struct {
 };
 
 static bool
-pchk_sample_black(const struct pchk_job *j, uint32_t *lit_out)
+pchk_sample_black(const struct pchk_job *j, uint32_t *lit_out, uint64_t *luma_out)
 {
    void *map = mmap(NULL, j->size, PROT_READ, MAP_SHARED, j->dmabuf, 0);
    if (map == MAP_FAILED) {
@@ -304,12 +307,14 @@ pchk_sample_black(const struct pchk_job *j, uint32_t *lit_out)
    ioctl(j->dmabuf, DMA_BUF_IOCTL_SYNC, &sync);
 
    uint32_t lit = 0;
+   uint64_t luma = 0;
    for (uint32_t gy = 0; gy < PCHK_GRID; gy++) {
       const uint32_t y = (uint64_t)(2 * gy + 1) * j->height / (2 * PCHK_GRID);
       const uint8_t *row = (const uint8_t *)map + (uint64_t)y * j->row_stride;
       for (uint32_t gx = 0; gx < PCHK_GRID; gx++) {
          const uint32_t x = (uint64_t)(2 * gx + 1) * j->width / (2 * PCHK_GRID);
          const uint8_t *px = row + (uint64_t)x * 4;
+         luma += px[0] + px[1] + px[2];
          if (px[0] | px[1] | px[2])
             lit++;
       }
@@ -319,6 +324,7 @@ pchk_sample_black(const struct pchk_job *j, uint32_t *lit_out)
    ioctl(j->dmabuf, DMA_BUF_IOCTL_SYNC, &sync);
    munmap(map, j->size);
    *lit_out = lit;
+   *luma_out = luma;
    return true;
 }
 
@@ -326,6 +332,8 @@ static void *
 pchk_worker(void *arg)
 {
    uint32_t prev_seq = 0;
+   uint64_t la[3] = {0, 0, 0};
+   uint32_t pulses = 0;
    for (;;) {
       pthread_mutex_lock(&pchk.lock);
       while (!pchk.count)
@@ -349,7 +357,27 @@ pchk_worker(void *arg)
       }
 
       uint32_t lit = 0;
-      if (!pchk.disabled && fence_ok && pchk_sample_black(&j, &lit)) {
+      uint64_t luma = 0;
+      if (!pchk.disabled && fence_ok && pchk_sample_black(&j, &lit, &luma)) {
+         /* DIAG v32: a frame brighter/darker than both neighbours (which agree). */
+         la[0] = la[1]; la[1] = la[2]; la[2] = luma;
+         if (la[0] && la[1] && la[2]) {
+            const double ref = (double)(la[0] + la[2]) / 2.0;
+            const double side = fabs((double)la[0] - (double)la[2]) / ref;
+            const double dev = ((double)la[1] - ref) / ref;
+            if (side < 0.004 && fabs(dev) > 0.008 && fabs(dev) < 0.5 && pulses++ < 40) {
+               mesa_logw("malisx2: pchk-pulse present#%u dev=%+.2f%% (sum %llu vs %llu/%llu) frame seq=%u",
+                         pchk.presents + 1, dev * 100.0, (unsigned long long)la[1],
+                         (unsigned long long)la[0], (unsigned long long)la[2], prev_seq);
+               for (int d = -2; d <= 1; d++) {
+                  const uint32_t sq = prev_seq + d;
+                  const uint32_t *c = mali_dbg_cb[sq % 64];
+                  mesa_logw("malisx2: pchk-pulse-cb seq=%u %s n=%u: %08x %08x %08x %08x %08x %08x",
+                            sq, d == 0 ? "PULSE" : "ok", mali_dbg_ncb[sq % 64], c[0], c[1], c[2],
+                            c[3], c[4], c[5]);
+               }
+            }
+         }
          pchk.presents++;
          const bool is_black = lit == 0;
          if (is_black) {
@@ -405,6 +433,7 @@ pchk_submit(VkImage image, int release_fence)
    }
    const uint32_t cur_seq = mali_dbg_cur;
    memset(mali_dbg_ev[(cur_seq + 1) % 64], 0, sizeof(mali_dbg_ev[0]));
+   mali_dbg_ncb[(cur_seq + 1) % 64] = 0;
    __atomic_store_n(&mali_dbg_cur, cur_seq + 1, __ATOMIC_RELAXED);
    struct pchk_job j = {
       .seq = cur_seq,

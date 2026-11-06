@@ -394,7 +394,13 @@ MALI_PER_ARCH(EndCommandBuffer)(VkCommandBuffer commandBuffer)
       for (uint32_t i = 0; i < cmd->diag_dn; i++)
          hh = hh * 0x100000001b3ULL ^ cmd->diag_dh[i];
       uint32_t s = cb_seq++;
-      if (logged < 60 && (s < 5 || hh != prev_hh)) {
+      {
+         const uint32_t f = mali_dbg_cur % 64;
+         const uint32_t k = __atomic_fetch_add(&mali_dbg_ncb[f], 1, __ATOMIC_RELAXED);
+         if (k < 8)
+            mali_dbg_cb[f][k] = (uint32_t)(hh & 0xffffffffu) ^ ((uint32_t)cmd->diag_dn << 28);
+      }
+      if (logged < 12 && (s < 5 || hh != prev_hh)) {
          char buf[2048];
          int pos = 0;
          for (uint32_t i = 0; i < cmd->diag_dn && pos < (int)sizeof(buf) - 20; i++)

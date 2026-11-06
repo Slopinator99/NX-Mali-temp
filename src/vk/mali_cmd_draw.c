@@ -455,6 +455,19 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
                h = h * 0x100000001b3ULL ^ up[i];
          }
       }
+      /* DIAG v32: plain uniform buffers' content. */
+      for (unsigned s2 = 0; s2 < MALI_MAX_SETS; s2++) {
+         const struct mali_descriptor_set *bs = &cmd->gfx.desc.bound[s2];
+         if (!bs->layout)
+            continue;
+         for (unsigned u = 0; u < 16; u++) {
+            if (!bs->dbg_ubo[u].cpu)
+               continue;
+            const uint8_t *up = bs->dbg_ubo[u].cpu;
+            for (uint32_t i = 0; i < bs->dbg_ubo[u].len; i++)
+               h = h * 0x100000001b3ULL ^ up[i];
+         }
+      }
       cmd->diag_dh[cmd->diag_dn++] = h;
    }
    /* DIAG v27: pin out-of-pass app draws (suspected every-27-frame flicker).

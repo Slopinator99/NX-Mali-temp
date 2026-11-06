@@ -370,6 +370,8 @@ mali_diag_should_log(uint32_t *counter, uint32_t *n)
 /* DIAGNOSTIC v25: per-present resource event counters (mali_android.c). */
 extern uint32_t mali_dbg_cur;
 extern uint32_t mali_dbg_ev[64][10];
+extern uint32_t mali_dbg_cb[64][8];
+extern uint32_t mali_dbg_ncb[64];
 #define MALI_DBG_EV(i) \
    ((void)__atomic_fetch_add(&mali_dbg_ev[mali_dbg_cur % 64][(i)], 1, __ATOMIC_RELAXED))
 

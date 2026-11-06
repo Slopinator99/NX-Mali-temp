@@ -88,6 +88,14 @@ struct mali_descriptor_set {
        * draw state are static. NULL when the memory has no CPU mapping. */
       void *cpu;
    } dyn_bufs[MALI_MAX_DYNAMIC_BUFFERS];
+
+   /* DIAG v32: host mapping + size of plain (non-dynamic) uniform buffers,
+    * direct-mapped by (binding, elem), so a draw can hash their content. */
+   struct {
+      uint32_t key;
+      uint32_t len;
+      const void *cpu;
+   } dbg_ubo[16];
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(mali_descriptor_set, base, VkDescriptorSet,

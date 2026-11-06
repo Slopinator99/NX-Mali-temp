@@ -293,6 +293,18 @@ write_buffer(const struct mali_descriptor_set *set, const VkDescriptorBufferInfo
                vk_buffer_range(&buffer->vk, info->offset, info->range),
                type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &desc);
    write_slot(set, binding, elem, MALI_SUBDESC_NONE, &desc);
+   if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+      /* DIAG v32 */
+      struct mali_descriptor_set *ms = (struct mali_descriptor_set *)set;
+      const uint32_t key = (binding << 8) | (elem & 0xff) | 0x80000000u;
+      const uint32_t idx = (binding * 7 + elem) & 15;
+      const uint64_t range = vk_buffer_range(&buffer->vk, info->offset, info->range);
+      ms->dbg_ubo[idx].key = key;
+      ms->dbg_ubo[idx].len = range > 4096 ? 4096 : (uint32_t)range;
+      ms->dbg_ubo[idx].cpu = (buffer->mem && buffer->mem->bo.cpu)
+         ? (const uint8_t *)buffer->mem->bo.cpu + buffer->mem_offset + info->offset
+         : NULL;
+   }
 }
 
 static void
