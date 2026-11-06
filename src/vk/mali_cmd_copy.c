@@ -236,9 +236,29 @@ MALI_PER_ARCH(CmdCopyBuffer2)(VkCommandBuffer commandBuffer, const VkCopyBufferI
    VK_FROM_HANDLE(vk_buffer, src, info->srcBuffer);
    VK_FROM_HANDLE(vk_buffer, dst, info->dstBuffer);
 
+   VK_FROM_HANDLE(mali_buffer, msrc, info->srcBuffer);
    /* One dispatch per region, as the blob. */
    for (uint32_t i = 0; i < info->regionCount; i++) {
       const VkBufferCopy2 *r = &info->pRegions[i];
+      {
+         /* DIAG v34: the source bytes the copy will move (CPU-written already). */
+         const uint32_t f = mali_dbg_cur % 64;
+         const uint32_t k = __atomic_fetch_add(&mali_dbg_ncp[f], 1, __ATOMIC_RELAXED);
+         if (k < 64) {
+            uint32_t h = 2166136261u;
+            if (msrc && msrc->mem && msrc->mem->bo.cpu) {
+               const uint8_t *sp = (const uint8_t *)msrc->mem->bo.cpu + msrc->mem_offset + r->srcOffset;
+               const uint64_t n = r->size > 256 ? 256 : r->size;
+               for (uint64_t b = 0; b < n; b++)
+                  h = (h ^ sp[b]) * 16777619u;
+            } else {
+               h = 0xdeadbeef;
+            }
+            mali_dbg_cp[f][k].key = (uint32_t)(vk_buffer_address(dst, r->dstOffset) & 0xffffffffu);
+            mali_dbg_cp[f][k].size = (uint32_t)r->size;
+            mali_dbg_cp[f][k].hash = h;
+         }
+      }
       record_copy(cmd, vk_buffer_address(src, r->srcOffset),
                   vk_buffer_address(dst, r->dstOffset), r->size);
    }

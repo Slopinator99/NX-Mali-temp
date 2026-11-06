@@ -371,6 +371,9 @@ mali_diag_should_log(uint32_t *counter, uint32_t *n)
 extern uint32_t mali_dbg_cur;
 extern uint32_t mali_dbg_ev[64][24];
 extern uint32_t mali_dbg_cb[64][8];
+struct mali_dbg_cp { uint32_t key, size, hash; };
+extern struct mali_dbg_cp mali_dbg_cp[64][64];
+extern uint32_t mali_dbg_ncp[64];
 extern uint32_t mali_dbg_ncb[64];
 #define MALI_DBG_EV(i) \
    ((void)__atomic_fetch_add(&mali_dbg_ev[mali_dbg_cur % 64][(i)], 1, __ATOMIC_RELAXED))
