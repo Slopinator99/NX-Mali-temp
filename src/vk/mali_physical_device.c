@@ -504,6 +504,10 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * that one, and compute workgroups fill whole warps when their width is
     * a multiple of it, as panvk reports. */
    .EXT_subgroup_size_control = true,
+
+   /* Texel buffer offsets: the alignment stays minTexelBufferOffsetAlignment
+    * for every format (no single-texel relaxation). */
+   .EXT_texel_buffer_alignment = true,
 };
 
 static struct vk_device_extension_table
@@ -706,6 +710,9 @@ get_features(struct vk_features *f, uint32_t arch)
       /* VK_EXT_subgroup_size_control */
       .subgroupSizeControl = true,
       .computeFullSubgroups = true,
+
+      /* VK_EXT_texel_buffer_alignment */
+      .texelBufferAlignment = true,
    };
 }
 
@@ -997,6 +1004,13 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
 
       /* VK_EXT_subgroup_size_control (sizes after the v7 limits below). */
       .requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT,
+
+      /* VK_EXT_texel_buffer_alignment: minTexelBufferOffsetAlignment, no
+       * single-texel relaxation. */
+      .storageTexelBufferOffsetAlignmentBytes = 64,
+      .storageTexelBufferOffsetSingleTexelAlignment = false,
+      .uniformTexelBufferOffsetAlignmentBytes = 64,
+      .uniformTexelBufferOffsetSingleTexelAlignment = false,
    };
 
    /*
