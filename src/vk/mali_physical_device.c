@@ -405,6 +405,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * code (mali_descriptor_set.c), so this needs no per-arch gate. */
    .KHR_push_descriptor = true,
 
+   /* The barriers are synchronization2's already (vkCmdPipelineBarrier2 on
+    * both back halves); the runtime turns the first version's commands and
+    * vkQueueSubmit into the second's. */
+   .KHR_synchronization2 = true,
+
    /* Instance divisors of any value up to maxVertexAttribDivisor: the
     * power-of-two and non-power-of-two attribute encodings
     * (mali_cmd_state.h), the same on v9 and v11. */
@@ -551,6 +556,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_push_descriptor */
       .pushDescriptor = true,
+
+      /* VK_KHR_synchronization2 */
+      .synchronization2 = true,
 
       /* VK_EXT_vertex_attribute_divisor. Divisor 0 reads the first element
        * for every instance (mali_cmd_state.h). */

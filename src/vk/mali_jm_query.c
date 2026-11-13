@@ -5,9 +5,10 @@
 
 /*
  * Timestamp queries on the job manager (v7 and v9): vkCreateQueryPool,
- * vkDestroyQueryPool, vkCmdResetQueryPool, vkCmdWriteTimestamp,
- * vkGetQueryPoolResults. ARMSX2 turns GPU timing on for any device
- * whose name is not "Mali-G615", so the G57 and G52 builds need these;
+ * vkDestroyQueryPool, vkCmdResetQueryPool, vkCmdWriteTimestamp2 (the
+ * runtime's vkCmdWriteTimestamp calls it), vkGetQueryPoolResults. ARMSX2
+ * turns GPU timing on for any device whose name is not "Mali-G615", so the
+ * G57 and G52 builds need these;
  * the G615 build does not (they stay waist stubs there,
  * mali_v11_device_entrypoints never gets them -- see the file comment
  * in mali_jm.h).
@@ -142,15 +143,14 @@ stage_is_vtc_only(VkPipelineStageFlags2 stage)
 }
 
 VKAPI_ATTR void VKAPI_CALL
-MALI_PER_ARCH(CmdWriteTimestamp)(VkCommandBuffer commandBuffer, VkPipelineStageFlagBits pipelineStage,
-                                 VkQueryPool _pool, uint32_t query)
+MALI_PER_ARCH(CmdWriteTimestamp2)(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 stage,
+                                  VkQueryPool _pool, uint32_t query)
 {
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_query_pool, pool, _pool);
 
-   struct mali_jm_chain *c = stage_is_vtc_only((VkPipelineStageFlags2)pipelineStage)
-                                ? mali_jm_cmd_vtc(cmd)
-                                : mali_jm_cmd_frag(cmd, false);
+   struct mali_jm_chain *c = stage_is_vtc_only(stage) ? mali_jm_cmd_vtc(cmd)
+                                                      : mali_jm_cmd_frag(cmd, false);
    if (!c)
       return;
    const uint64_t addr = query_addr(pool, query);
