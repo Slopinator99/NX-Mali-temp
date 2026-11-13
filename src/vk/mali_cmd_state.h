@@ -1068,6 +1068,23 @@ mali_v7_dyn_bake_dirty(const struct vk_dynamic_graphics_state *dyn)
 }
 #endif
 
+/*
+ * Rasterizer discard for the bound pipeline: its own state, or the command
+ * buffer's when it left any baked state dynamic (mali_cmd_bind_graphics then
+ * copied the static states there). With discard on, the IDVS draws of v9
+ * and v11 are skipped whole: nothing reaches the rasterizer, and the vertex
+ * stage has no side effect to keep (vertexPipelineStoresAndAtomics is off,
+ * there is no transform feedback). v7 keeps its Vertex job and drops the
+ * Tiler job (mali_jm_cmd_draw_v7.c), as panvk does.
+ */
+static inline bool
+mali_gfx_rasterizer_discard(const struct mali_cmd_buffer *cmd)
+{
+   const struct mali_graphics_pipeline *p = cmd->gfx.draw.pipeline;
+   return p->bind.dynamic ? cmd->vk.dynamic_graphics_state.rs.rasterizer_discard_enable
+                          : p->state.rs.rasterizer_discard_enable;
+}
+
 /* Dynamic states this driver reads at draw time, per dirty group. */
 static inline void
 mali_gfx_collect_dynamic_dirty(struct mali_cmd_buffer *cmd)
