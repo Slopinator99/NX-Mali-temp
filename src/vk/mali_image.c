@@ -548,6 +548,27 @@ mali_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
    /* Eden (and the stock driver) accept a view whose format differs from its
     * image's even without MUTABLE_FORMAT_BIT; the runtime asserts on it. */
    VK_FROM_HANDLE(mali_image, vimg, pCreateInfo->image);
+   {
+      /* DIAG v45: Eden's image views that are not plain (EDX-IV). */
+      static unsigned edx_iv_n;
+      const VkComponentMapping *c = &pCreateInfo->components;
+      const bool swz = c->r > 1 || c->g > 2 || c->b > 3 || c->a > 4 ||
+                       (c->r && c->r != VK_COMPONENT_SWIZZLE_R) ||
+                       (c->g && c->g != VK_COMPONENT_SWIZZLE_G) ||
+                       (c->b && c->b != VK_COMPONENT_SWIZZLE_B) ||
+                       (c->a && c->a != VK_COMPONENT_SWIZZLE_A);
+      const VkFormat f = pCreateInfo->format;
+      const bool packed = f == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+                          f == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ||
+                          f == VK_FORMAT_B10G11R11_UFLOAT_PACK32 ||
+                          vimg->vk.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
+                          vimg->vk.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32;
+      if ((f != vimg->vk.format || swz || packed) && edx_iv_n < 6000)
+         mesa_logi("EDX-IV %u view %d img %d swz %d%d%d%d type %d usage 0x%x flags 0x%x",
+                   edx_iv_n++, (int)f, (int)vimg->vk.format, (int)c->r, (int)c->g,
+                   (int)c->b, (int)c->a, (int)pCreateInfo->viewType,
+                   (unsigned)vimg->vk.usage, (unsigned)vimg->vk.create_flags);
+   }
    const VkImageCreateFlags saved_flags = vimg->vk.create_flags;
    if (pCreateInfo->format != vimg->vk.format)
       vimg->vk.create_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;

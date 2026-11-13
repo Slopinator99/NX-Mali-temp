@@ -60,6 +60,7 @@
 
 #include "panfrost/compiler/pan_nir.h"
 #include "util/hash_table.h"
+#include "util/log.h"
 #include "util/os_time.h"
 #include "util/simple_mtx.h"
 
@@ -219,6 +220,33 @@ stage_to_nir(struct mali_device *dev, VkPipelineCreateFlags2KHR flags, struct st
       return vk_errorf(dev, VK_ERROR_INVALID_SHADER_NV,
                        "malformed SPIR-V for the %s stage",
                        mesa_shader_stage_name(vk_to_mesa_shader_stage(st->info->stage)));
+
+   {
+      /* DIAG v46: dump every distinct SPIR-V Eden hands us (EDX-SPV). */
+      static uint32_t seen[8192];
+      static unsigned nseen;
+      static simple_mtx_t lock = SIMPLE_MTX_INITIALIZER;
+      uint32_t hash = 2166136261u;
+      for (size_t i = 0; i < size / 4; i++)
+         hash = (hash ^ words[i]) * 16777619u;
+      simple_mtx_lock(&lock);
+      bool fresh = true;
+      for (unsigned i = 0; i < nseen; i++)
+         if (seen[i] == hash) { fresh = false; break; }
+      if (fresh && nseen < 8192)
+         seen[nseen++] = hash;
+      simple_mtx_unlock(&lock);
+      if (fresh) {
+         char path[256];
+         snprintf(path, sizeof(path),
+                  "/sdcard/Android/data/dev.eden.eden_emulator.nightly/files/edx_spv/%08x.spv", hash);
+         FILE *f = fopen(path, "wb");
+         if (f) { fwrite(words, 1, size, f); fclose(f); }
+         mesa_logi("EDX-SPV %s %08x %zu %s",
+                   mesa_shader_stage_name(vk_to_mesa_shader_stage(st->info->stage)), hash,
+                   size, f ? "saved" : "NOSAVE");
+      }
+   }
 
    const mesa_shader_stage stage = vk_to_mesa_shader_stage(st->info->stage);
    const struct spirv_to_nir_options spirv_options = MALI_PER_ARCH(shader_spirv_options)(&st->rs);
