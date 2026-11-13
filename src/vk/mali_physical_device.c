@@ -485,6 +485,14 @@ static const struct vk_device_extension_table mali_device_extensions = {
    /* Workgroup memory a shader asks to start zeroed is zeroed by
     * nir_zero_initialize_shared_memory (mali_shader.c). */
    .KHR_zero_initialize_workgroup_memory = true,
+
+   /* The second copy commands are what the back halves implement; the
+    * runtime implements the first ones on them (vk_cmd_copy.c). */
+   .KHR_copy_commands2 = true,
+   /* No tools to list: the runtime answers with none. */
+   .EXT_tooling_info = true,
+   /* The SPIR-V parser skips non-semantic instructions. */
+   .KHR_shader_non_semantic_info = true,
 };
 
 static struct vk_device_extension_table
