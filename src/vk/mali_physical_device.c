@@ -402,6 +402,9 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * Eden uses timeline semaphores for its GPU tick tracking when present and
     * a fence-based fallback otherwise. */
    .KHR_timeline_semaphore = true,
+
+   /* Eden resets its query banks from the host. */
+   .EXT_host_query_reset = true,
 };
 
 static struct vk_device_extension_table
@@ -538,6 +541,9 @@ get_features(struct vk_features *f, uint32_t arch)
        * for every instance (mali_cmd_state.h). */
       .vertexAttributeInstanceRateDivisor = true,
       .vertexAttributeInstanceRateZeroDivisor = true,
+
+      /* VK_EXT_host_query_reset (vkResetQueryPool, mali_cmd_query.c). */
+      .hostQueryReset = true,
    };
 }
 
