@@ -35,9 +35,16 @@
  * at; the blob creates at most four. */
 #define MALI_MAX_PHYSICAL_DEVICES 4
 
-/* The Vulkan version we implement: ARMSX2 needs 1.1 and uses nothing
- * newer. */
-#define MALI_API_VERSION VK_MAKE_API_VERSION(0, 1, 1, VK_HEADER_VERSION)
+/*
+ * The Vulkan version each back half implements (mali_physical_device.c
+ * api_version_for_arch). Vulkan 1.2 needs timeline semaphores, which the
+ * runtime emulates on the CSF sync type's GPU multi-wait (v11); the job
+ * manager (v7, v9) has none, so those stay at 1.1. The instance reports
+ * the highest.
+ */
+#define MALI_API_VERSION_CSF VK_MAKE_API_VERSION(0, 1, 2, VK_HEADER_VERSION)
+#define MALI_API_VERSION_JM VK_MAKE_API_VERSION(0, 1, 1, VK_HEADER_VERSION)
+#define MALI_API_VERSION MALI_API_VERSION_CSF
 
 /* One queue family, one queue. */
 #define MALI_QUEUE_COUNT 1

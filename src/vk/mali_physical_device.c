@@ -81,6 +81,12 @@ driver_info_for_arch(uint32_t arch)
 }
 
 static inline uint32_t
+api_version_for_arch(uint32_t arch)
+{
+   return arch >= 10 ? MALI_API_VERSION_CSF : MALI_API_VERSION_JM;
+}
+
+static inline uint32_t
 driver_version_for_arch(uint32_t arch)
 {
    return arch == 7 ? MALI_V7_DRIVER_VERSION
@@ -562,6 +568,22 @@ get_features(struct vk_features *f, uint32_t arch)
       /* Vulkan 1.1: multiview is required of a 1.1 device. */
       .multiview = true,
 
+      /*
+       * Vulkan 1.2's required features (with timelineSemaphore, hostQueryReset
+       * and samplerMirrorClampToEdge below). The runtime's framebuffers and
+       * render passes take imageless framebuffers; layouts are not tracked,
+       * so depth and stencil may have their own; uniform buffers are laid
+       * out by the SPIR-V's offsets and strides, whatever the block's rules.
+       * The subgroup operations reported are the basic ones only, which take
+       * no operand of an extended type and have no broadcast, so the last
+       * two hold for every operation there is.
+       */
+      .imagelessFramebuffer = true,
+      .separateDepthStencilLayouts = true,
+      .uniformBufferStandardLayout = true,
+      .shaderSubgroupExtendedTypes = true,
+      .subgroupBroadcastDynamicId = true,
+
       /* VK_EXT_rasterization_order_attachment_access, every arch: the
        * draw descriptor's Flags 0 word (mali_pipeline_state.c) carries
        * this on v9 the same as v11, the Renderer State Descriptor's
@@ -743,7 +765,7 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
    const char *const driver_info = driver_info_for_arch(p->arch_major);
 
    *props = (struct vk_properties) {
-      .apiVersion = MALI_API_VERSION,
+      .apiVersion = api_version_for_arch(p->arch_major),
       .driverVersion = driver_version,
       .vendorID = MALI_VENDOR_ID,
       .deviceID = (uint32_t)p->gpu_id,
@@ -884,6 +906,13 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
        * (mali_CreateBuffer). */
       .maxBufferSize = max_alloc,
       .maxTimelineSemaphoreValueDifference = INT64_MAX,
+
+      /* Vulkan 1.2. No multisampled integer attachments. No float controls
+       * execution mode is reported (the compilers' handling of them is not
+       * checked yet), so none can be set at any bit size. */
+      .framebufferIntegerColorSampleCounts = VK_SAMPLE_COUNT_1_BIT,
+      .denormBehaviorIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE,
+      .roundingModeIndependence = VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE,
 
       /* VK_KHR_driver_properties */
       .driverID = VK_DRIVER_ID_ARM_PROPRIETARY,
