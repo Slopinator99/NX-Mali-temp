@@ -1090,7 +1090,7 @@ MALI_PER_ARCH(CmdResetEvent2)(VkCommandBuffer commandBuffer, VkEvent event,
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdWaitEvents2)(VkCommandBuffer commandBuffer, uint32_t eventCount,
                               const VkEvent *pEvents,
-                              const VkDependencyInfo *pDependencyInfo)
+                              const VkDependencyInfo *pDependencyInfos)
 {
    /* One full execution barrier: everything recorded before the wait
     * completes before anything after it starts. That covers whatever
@@ -1112,9 +1112,13 @@ MALI_PER_ARCH(CmdWaitEvents2)(VkCommandBuffer commandBuffer, uint32_t eventCount
    MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, &dep);
 
    /* The caller's own barriers, if any (Eden passes none; a general
-    * vkCmdWaitEvents may). Sequential composition is correct. */
-   if (pDependencyInfo->memoryBarrierCount ||
-       pDependencyInfo->bufferMemoryBarrierCount ||
-       pDependencyInfo->imageMemoryBarrierCount)
-      MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, pDependencyInfo);
+    * vkCmdWaitEvents may): one dependency per event, each with its own
+    * memory barriers and layout transitions. Sequential composition is
+    * correct. */
+   for (uint32_t i = 0; i < eventCount; i++) {
+      const VkDependencyInfo *dep_i = &pDependencyInfos[i];
+      if (dep_i->memoryBarrierCount || dep_i->bufferMemoryBarrierCount ||
+          dep_i->imageMemoryBarrierCount)
+         MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, dep_i);
+   }
 }
