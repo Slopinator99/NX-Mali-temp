@@ -508,6 +508,10 @@ static const struct vk_device_extension_table mali_device_extensions = {
    /* Texel buffer offsets: the alignment stays minTexelBufferOffsetAlignment
     * for every format (no single-texel relaxation). */
    .EXT_texel_buffer_alignment = true,
+
+   /* Image accesses out of bounds: pan_nir_lower_image turns the
+    * coordinates into the bounds-checked form, as for panvk. */
+   .EXT_image_robustness = true,
 };
 
 static struct vk_device_extension_table
@@ -713,6 +717,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_EXT_texel_buffer_alignment */
       .texelBufferAlignment = true,
+
+      /* VK_EXT_image_robustness */
+      .robustImageAccess = true,
    };
 }
 
