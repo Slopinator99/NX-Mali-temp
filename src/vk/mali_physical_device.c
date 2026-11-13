@@ -373,6 +373,12 @@ static const struct vk_device_extension_table mali_device_extensions = {
    .KHR_line_rasterization = true,
    .EXT_line_rasterization = true,
 
+   /* Load and store op NONE (mali_fb.c): a target is written to memory only
+    * by its store, so neither touches the image. Both names, as with line
+    * rasterization. */
+   .KHR_load_store_op_none = true,
+   .EXT_load_store_op_none = true,
+
    /* VMA (ARMSX2's allocator) only asks for a memory budget when this is
     * listed. */
    /* DIAGNOSTIC v21 (flicker hunt): not advertised. With it, Eden's texture cache
