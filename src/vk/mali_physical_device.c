@@ -476,6 +476,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * honoured (mali_pipeline.c); the runtime takes the pipeline cache's
     * EXTERNALLY_SYNCHRONIZED flag. */
    .EXT_pipeline_creation_cache_control = true,
+
+   /* OpTerminateInvocation: pan_preprocess_nir lowers terminate to demote
+    * in fragment shaders (the hardware ends a quad once it is all
+    * discarded), as for panvk. */
+   .KHR_shader_terminate_invocation = true,
 };
 
 static struct vk_device_extension_table
@@ -664,6 +669,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_EXT_pipeline_creation_cache_control */
       .pipelineCreationCacheControl = true,
+
+      /* VK_KHR_shader_terminate_invocation */
+      .shaderTerminateInvocation = true,
    };
 }
 
