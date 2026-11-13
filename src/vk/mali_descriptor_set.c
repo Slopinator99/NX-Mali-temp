@@ -29,6 +29,7 @@
 #endif
 
 #include "mali_vk.h"
+#include "vk_descriptor_update_template.h"
 #include "mali_arch.h"
 #include "mali_descriptor_set.h"
 #include "mali_image.h"
@@ -486,6 +487,51 @@ MALI_PER_ARCH(UpdateDescriptorSets)(VkDevice _device, uint32_t descriptorWriteCo
    }
    for (uint32_t i = 0; i < descriptorCopyCount; i++)
       copy_descriptors(&pDescriptorCopies[i]);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(UpdateDescriptorSetWithTemplate)(VkDevice _device, VkDescriptorSet descriptorSet,
+                                               VkDescriptorUpdateTemplate descriptorUpdateTemplate,
+                                               const void *pData)
+{
+   VK_FROM_HANDLE(mali_descriptor_set, set, descriptorSet);
+   VK_FROM_HANDLE(vk_descriptor_update_template, templ, descriptorUpdateTemplate);
+
+   for (uint32_t i = 0; i < templ->entry_count; i++) {
+      const struct vk_descriptor_template_entry *e = &templ->entries[i];
+      /* The template's stride need not match the Vulkan structs', so the
+       * elements are written one at a time. */
+      for (uint32_t j = 0; j < e->array_count; j++) {
+         const void *src = (const uint8_t *)pData + e->offset + (size_t)j * e->stride;
+         VkWriteDescriptorSet w = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = descriptorSet,
+            .dstBinding = e->binding,
+            .dstArrayElement = e->array_element + j,
+            .descriptorCount = 1,
+            .descriptorType = e->type,
+         };
+         switch (e->type) {
+         case VK_DESCRIPTOR_TYPE_SAMPLER:
+         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+         case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+         case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+         case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+            w.pImageInfo = src;
+            break;
+         case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+         case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+            w.pTexelBufferView = src;
+            break;
+         case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
+            continue; /* not used by Eden */
+         default:
+            w.pBufferInfo = src;
+            break;
+         }
+         write_descriptors(set, &w);
+      }
+   }
 }
 
 /* ---------------------------------------------------------------------- */
