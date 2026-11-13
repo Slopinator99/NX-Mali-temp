@@ -30,6 +30,16 @@
 #include "wsi_common.h"
 #endif
 
+/* DIAGNOSTIC v25's counters (mali_vk.h): every platform's build counts
+ * into them, and only Android's present path (mali_android.c) reads them,
+ * so they are defined here, in a file both platforms build. */
+uint32_t mali_dbg_cur;
+uint32_t mali_dbg_ev[64][24];
+uint32_t mali_dbg_cb[64][8];
+struct mali_dbg_cp mali_dbg_cp[64][64];
+uint32_t mali_dbg_ncp[64];
+uint32_t mali_dbg_ncb[64];
+
 /* ---------------------------------------------------------------------- */
 /* Interned keys (mali_pipeline.h), shared by every arch's pipelines      */
 

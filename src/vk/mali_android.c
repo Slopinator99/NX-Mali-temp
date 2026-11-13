@@ -262,13 +262,6 @@ mali_AcquireImageANDROID(VkDevice _device, VkImage image, int nativeFenceFd,
  * runs and a periodic summary are logged; the present path itself never
  * blocks and holds no lock while this runs.
  */
-uint32_t mali_dbg_cur;
-uint32_t mali_dbg_ev[64][24];
-uint32_t mali_dbg_cb[64][8];
-struct mali_dbg_cp mali_dbg_cp[64][64];
-uint32_t mali_dbg_ncp[64];
-uint32_t mali_dbg_ncb[64];
-
 #define PCHK_QUEUE 16
 #define PCHK_GRID 24
 
