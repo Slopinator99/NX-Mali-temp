@@ -400,6 +400,19 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * (mali_jm_cmd_draw_v7.c). */
    .EXT_provoking_vertex = true,
 
+   /* What VK_KHR_dynamic_rendering needs under Vulkan 1.2. The runtime
+    * implements the second render pass commands (vk_render_pass.c); the
+    * depth/stencil resolve modes are reported below. No resolve of any kind
+    * is done in a pass: multisampled attachments are not supported (the
+    * render pass code says so in the log when it gets one). */
+   .KHR_create_renderpass2 = true,
+   .KHR_depth_stencil_resolve = true,
+
+   /* vkCmdBeginRendering is how every pass runs already (the runtime's
+    * render pass objects are built on it), and pipelines take their
+    * attachment formats from VkPipelineRenderingCreateInfo. */
+   .KHR_dynamic_rendering = true,
+
    /* ARMSX2 pushes its texture set instead of allocating and writing a new
     * descriptor set per draw; every arch shares the same descriptor-set
     * code (mali_descriptor_set.c), so this needs no per-arch gate. */
@@ -573,6 +586,9 @@ get_features(struct vk_features *f, uint32_t arch)
        * bit is moot either way. */
       .provokingVertexLast = true,
       .transformFeedbackPreservesProvokingVertex = false,
+
+      /* VK_KHR_dynamic_rendering */
+      .dynamicRendering = true,
 
       /* VK_EXT_device_fault */
       .deviceFaultEXT = true,
@@ -877,6 +893,13 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
        * per pipeline (panvk reports the same). */
       .provokingVertexModePerPipeline = false,
       .transformFeedbackPreservesTriangleFanProvokingVertex = false,
+
+      /* VK_KHR_depth_stencil_resolve: SAMPLE_ZERO is the one mode a device
+       * must have, and both aspects take the same mode. */
+      .supportedDepthResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+      .supportedStencilResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
+      .independentResolveNone = false,
+      .independentResolve = false,
    };
 
    /*

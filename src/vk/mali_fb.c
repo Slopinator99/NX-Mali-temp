@@ -1095,11 +1095,20 @@ MALI_PER_ARCH(CmdBeginRendering)(VkCommandBuffer commandBuffer, const VkRenderin
    };
    uint32_t w = UINT32_MAX, h = UINT32_MAX;
    bool bound = false;
+   const bool resuming = info->flags & VK_RENDERING_RESUMING_BIT;
+   const bool suspending = info->flags & VK_RENDERING_SUSPENDING_BIT;
 
-   if (info->flags & (VK_RENDERING_SUSPENDING_BIT | VK_RENDERING_RESUMING_BIT))
-      vk_logw(VK_LOG_OBJS(cmd), "malisx2: suspended/resumed rendering is not supported");
    if (info->viewMask)
       vk_logw(VK_LOG_OBJS(cmd), "malisx2: multiview rendering is not supported");
+   bool resolve = (info->pDepthAttachment &&
+                   info->pDepthAttachment->resolveMode != VK_RESOLVE_MODE_NONE) ||
+                  (info->pStencilAttachment &&
+                   info->pStencilAttachment->resolveMode != VK_RESOLVE_MODE_NONE);
+   for (uint32_t i = 0; i < info->colorAttachmentCount; i++)
+      resolve |= info->pColorAttachments[i].resolveMode != VK_RESOLVE_MODE_NONE;
+   if (resolve)
+      vk_logw(VK_LOG_OBJS(cmd), "malisx2: attachment resolves are not supported: "
+                                "this pass's are not done");
 
    assert(info->colorAttachmentCount <= MALI_MAX_RTS);
    for (uint32_t i = 0; i < info->colorAttachmentCount; i++) {
@@ -1156,6 +1165,52 @@ MALI_PER_ARCH(CmdBeginRendering)(VkCommandBuffer commandBuffer, const VkRenderin
    d.width = MAX2(d.width, 1);
    d.height = MAX2(d.height, 1);
    d.layer_count = MAX2(d.layer_count, 1);
+
+   /*
+    * A render pass instance split by suspending and resuming is one instance
+    * to the application: the load ops apply when it begins and the store ops
+    * when it ends, and nothing the application records orders the parts.
+    * Each part is a pass of its own here, so a part that is suspended stores
+    * every target and a part that resumes loads every target, after a
+    * dependency from the attachment writes before it to those loads (the
+    * loads read through the texture caches).
+    */
+   if (resuming || suspending) {
+      struct mali_fb_target *targets[MALI_MAX_RTS + 2];
+      unsigned n = 0;
+      for (uint32_t i = 0; i < d.rt_count; i++)
+         targets[n++] = &d.rt[i];
+      targets[n++] = &d.z;
+      targets[n++] = &d.s;
+      for (unsigned i = 0; i < n; i++) {
+         if (!targets[i]->image)
+            continue;
+         if (resuming)
+            targets[i]->load = MALI_ATT_LOAD_LOAD;
+         if (suspending)
+            targets[i]->store = true;
+      }
+   }
+   if (resuming) {
+      const VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                                           VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
+                                           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+      const VkMemoryBarrier2 barrier = {
+         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+         .srcStageMask = stages,
+         .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+         .dstStageMask = stages,
+         .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+      };
+      const VkDependencyInfo dep = {
+         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+         .memoryBarrierCount = 1,
+         .pMemoryBarriers = &barrier,
+      };
+      MALI_PER_ARCH(CmdPipelineBarrier2)(commandBuffer, &dep);
+   }
 
    MALI_PER_ARCH(cmd_render_begin)(cmd, &d);
    cmd->gfx.spec_render_pass = true;
