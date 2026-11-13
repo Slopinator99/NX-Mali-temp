@@ -512,6 +512,12 @@ static const struct vk_device_extension_table mali_device_extensions = {
    /* Image accesses out of bounds: pan_nir_lower_image turns the
     * coordinates into the bounds-checked form, as for panvk. */
    .EXT_image_robustness = true,
+
+   /* OpSDot, OpUDot and the accumulating forms: the SPIR-V parser emits
+    * NIR dot products, which kraid has instructions for and other
+    * compilers lower to plain arithmetic. No product is reported as
+    * accelerated. */
+   .KHR_shader_integer_dot_product = true,
 };
 
 static struct vk_device_extension_table
@@ -720,6 +726,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_EXT_image_robustness */
       .robustImageAccess = true,
+
+      /* VK_KHR_shader_integer_dot_product */
+      .shaderIntegerDotProduct = true,
    };
 }
 
