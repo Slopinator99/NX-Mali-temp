@@ -597,7 +597,7 @@ fill_bind(struct mali_device *dev, struct mali_graphics_pipeline *p)
    return VK_SUCCESS;
 }
 
-#if PAN_ARCH < 9
+#if 1 /* clip-distance fragment shader: every arch with clip support */
 /*
  * v7 clips in the fragment shader (mali_shader.c, "Clip distances"), so a
  * pipeline whose vertex shader writes clip distances and that has no
@@ -686,7 +686,7 @@ create_graphics_pipeline(struct mali_device *dev, VkPipelineCache cache_handle,
    struct vk_pipeline_cache *cache = pick_cache(dev, cache_handle);
    struct stage stages[2];
    struct stage *vs = NULL, *fs = NULL;
-#if PAN_ARCH < 9
+#if 1 /* clip-distance fragment shader: every arch with clip support */
    /* The fragment shader that only clips (clip_fs_compile), if needed. */
    struct stage clip = {0};
 #endif
@@ -770,7 +770,7 @@ create_graphics_pipeline(struct mali_device *dev, VkPipelineCache cache_handle,
       if (result != VK_SUCCESS)
          goto out;
    }
-#if PAN_ARCH < 9
+#if 1 /* clip-distance fragment shader: every arch with clip support */
    if (!fs && vs_writes_clip_distances(vs->shader)) {
       clip_fs_key(dev, &state, vs->shader, clip.key);
       if (!stage_lookup(dev, cache, &clip)) {
@@ -804,7 +804,7 @@ create_graphics_pipeline(struct mali_device *dev, VkPipelineCache cache_handle,
       p->fs = fs->shader;
       fs->shader = NULL;
    }
-#if PAN_ARCH < 9
+#if 1 /* clip-distance fragment shader: every arch with clip support */
    if (clip.shader) {
       p->fs = clip.shader;
       clip.shader = NULL;
@@ -845,7 +845,7 @@ out:
                   os_time_get_nano() - start);
    for (uint32_t i = 0; i < stage_count; i++)
       stage_finish(dev, &stages[i]);
-#if PAN_ARCH < 9
+#if 1 /* clip-distance fragment shader: every arch with clip support */
    stage_finish(dev, &clip);
 #endif
    return result;

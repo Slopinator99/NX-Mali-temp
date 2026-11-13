@@ -177,6 +177,15 @@ lower_sysvals(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    case nir_intrinsic_load_base_instance:
       val = load_sysval(b, graphics, bit_size, vs.base_instance);
       break;
+   case nir_intrinsic_load_base_vertex:
+      /* firstVertex for a direct draw, vertexOffset for an indexed one:
+       * the same word the driver keeps for first_vertex. */
+      val = load_sysval(b, graphics, bit_size, vs.first_vertex);
+      break;
+   case nir_intrinsic_load_draw_id:
+      /* No multi-draw extension: always the first (only) draw. */
+      val = nir_imm_zero(b, 1, bit_size);
+      break;
    case nir_intrinsic_load_noperspective_varyings_pan:
       val = load_sysval(b, graphics, bit_size, vs.noperspective_varyings);
       break;
@@ -1473,6 +1482,8 @@ v7_stencil_tile_conv(nir_builder *b, nir_intrinsic_instr *intr, UNUSED void *dat
    return true;
 }
 
+#endif /* PAN_ARCH < 9 (stencil tile reads) */
+
 /* ---------------------------------------------------------------------- */
 /* Clip distances                                                          */
 
@@ -1572,7 +1583,6 @@ lower_clip_distance_fs(nir_shader *nir, const struct pan_varying_layout *vs_layo
    nir->info.fs.uses_discard = true;
    nir_progress(true, impl, nir_metadata_control_flow);
 }
-#endif
 
 /* ---------------------------------------------------------------------- */
 /* Backend compile                                                         */
@@ -2127,8 +2137,8 @@ MALI_PER_ARCH(shader_compile)(struct mali_device *dev,
 #if PAN_ARCH < 9
       NIR_PASS(_, nir, nir_shader_intrinsics_pass, v7_stencil_tile_conv,
                nir_metadata_control_flow, NULL);
-      lower_clip_distance_fs(nir, info->vs_varying_layout);
 #endif
+      lower_clip_distance_fs(nir, info->vs_varying_layout);
       /* Input slots first: their count sizes the front of the driver
        * table (mali_shader.h). */
       nir_assign_io_var_locations(nir, nir_var_shader_in);

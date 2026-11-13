@@ -405,6 +405,9 @@ static const struct vk_device_extension_table mali_device_extensions = {
 
    /* Eden resets its query banks from the host. */
    .EXT_host_query_reset = true,
+
+   /* The sampler descriptor has the mode already. */
+   .KHR_sampler_mirror_clamp_to_edge = true,
 };
 
 static struct vk_device_extension_table
@@ -463,8 +466,8 @@ get_features(struct vk_features *f, uint32_t arch)
       .tessellationShader = false,
       .sampleRateShading = true,
       .dualSrcBlend = dual_src_blend_for_arch(arch),
-      .logicOp = false,
-      .multiDrawIndirect = false,
+      .logicOp = true,
+      .multiDrawIndirect = true,
       .drawIndirectFirstInstance = false,
       .depthClamp = true,
       .depthBiasClamp = true,
@@ -474,10 +477,10 @@ get_features(struct vk_features *f, uint32_t arch)
        * clipped edge is not antialiased; and with a fragment shader that
        * forces early fragment tests, clipped fragments still write depth
        * and stencil. */
-      .shaderClipDistance = arch == 7,
+      .shaderClipDistance = arch == 7 || arch == 11,
       .fillModeNonSolid = false,
       .depthBounds = false,
-      .wideLines = false,
+      .wideLines = true,
       .largePoints = true,
       .alphaToOne = false,
       .multiViewport = false,
@@ -544,6 +547,13 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_EXT_host_query_reset (vkResetQueryPool, mali_cmd_query.c). */
       .hostQueryReset = true,
+
+      /* VK_KHR_sampler_mirror_clamp_to_edge (mali_sampler.c maps it). */
+      .samplerMirrorClampToEdge = true,
+
+      /* gl_BaseVertex, gl_BaseInstance, and a gl_DrawID that is always 0
+       * (mali_shader.c lower_sysvals). */
+      .shaderDrawParameters = true,
    };
 }
 
@@ -686,7 +696,7 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       .mipmapPrecisionBits = 8,
       .lineSubPixelPrecisionBits = 8,     /* same as panvk on this hardware */
       .maxDrawIndexedIndexValue = UINT32_MAX,
-      .maxDrawIndirectCount = 1,
+      .maxDrawIndirectCount = UINT32_MAX,
       .maxSamplerLodBias = 126.0f,
       .maxSamplerAnisotropy = 16.0f,
       .maxViewports = 1,
@@ -725,7 +735,7 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       .maxCombinedClipAndCullDistances = 0,
       .discreteQueuePriorities = 2,
       .pointSizeRange = { 1.0f, 1024.0f },
-      .lineWidthRange = { 1.0f, 1.0f },
+      .lineWidthRange = { 1.0f, 8.0f },
       .pointSizeGranularity = 0.0625f,
       .lineWidthGranularity = 0.0f,
       .strictLines = true,
@@ -822,6 +832,10 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
     * 4096 16-byte entries (genxml v7.xml). Warps are 8 lanes
     * (pan_subgroup_size).
     */
+   if (p->arch_major == 11) {
+      props->maxClipDistances = MALI_V7_MAX_CLIP_DISTANCES;
+      props->maxCombinedClipAndCullDistances = MALI_V7_MAX_CLIP_DISTANCES;
+   }
    if (p->arch_major == 7) {
       props->maxClipDistances = MALI_V7_MAX_CLIP_DISTANCES;
       props->maxCombinedClipAndCullDistances = MALI_V7_MAX_CLIP_DISTANCES;
