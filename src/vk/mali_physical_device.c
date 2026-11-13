@@ -396,6 +396,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
    .KHR_create_renderpass2 = true,
    .KHR_depth_stencil_resolve = true,
 
+   /* vkCmdBeginRendering is how every pass runs already (the runtime's
+    * render pass objects are built on it), and pipelines take their
+    * attachment formats from VkPipelineRenderingCreateInfo. */
+   .KHR_dynamic_rendering = true,
+
    /* ARMSX2 pushes its texture set instead of allocating and writing a new
     * descriptor set per draw; every arch shares the same descriptor-set
     * code (mali_descriptor_set.c), so this needs no per-arch gate. */
@@ -540,6 +545,9 @@ get_features(struct vk_features *f, uint32_t arch)
        * bit is moot either way. */
       .provokingVertexLast = true,
       .transformFeedbackPreservesProvokingVertex = false,
+
+      /* VK_KHR_dynamic_rendering */
+      .dynamicRendering = true,
 
       /* VK_EXT_device_fault */
       .deviceFaultEXT = true,
