@@ -1,15 +1,44 @@
-# malisx2
+# eden_mali_driver
 
-A Vulkan driver for Arm Mali GPUs that talks to Arm's **kbase** kernel
-driver, the one Android phones and handhelds ship. It is written for one
-application, the [ARMSX2](https://github.com/ARMSX2/ARMSX2) PlayStation 2
-emulator, which loads it in place of the system driver. It implements what
-ARMSX2 and the Android Vulkan loader use; every other entry point logs and
-fails.
+A Vulkan driver for Arm Mali GPUs (kbase kernel driver, command-stream
+frontend), aimed at running **Nintendo Switch games in the
+[Eden](https://git.eden-emu.dev/eden-emu/eden) emulator** on Android devices
+and handhelds that ship Mali GPUs. It is installed like any custom GPU driver
+in Eden: a zip with the library and a `meta.json`.
 
-Target: Mali-G615 (Mesa architecture v11, command-stream frontend), on the
-Anbernic RG 477V. Shaders are compiled with Mesa's kraid compiler; the
-driver is built on Mesa's shared Vulkan runtime.
+## Origin
+
+This project is a fork of [bmdhacks/malisx2](https://github.com/bmdhacks/malisx2),
+an independent, clean-room Vulkan driver for Mali that was first written for a
+different emulator. What we build on is its foundation: a panvk-style driver on
+Mesa's shared Vulkan runtime and the Panfrost/kraid shader compiler, its own
+kbase/CSF queue, memory and command-stream layer, and the Android HAL
+packaging. What this fork changes is the target: the work here is making the
+driver correct and complete for what Eden's Vulkan renderer needs (indirect
+draws, mutable-format views, Maxwell-style topologies, queries and conditional
+rendering, ...), rather than the entry points of the original application.
+Entry points the driver does not implement yet log and fail.
+
+Target hardware so far: Mali-G615 (Mesa architecture v11, CSF), tested on an
+Anbernic RG 557 (MediaTek MT6897, Android 14).
+
+## Testing
+
+Correctness is driven by [edenprobe](https://github.com/scarletnx/edenprobe),
+a homebrew program of hardware probes whose cases are judged against what a
+real console does. The workflow: run its graphics suites in Eden on the stock
+Arm driver (the reference) and on this driver, diff the reports case by case,
+and fix the cases that fail only here. Fixes found this way so far:
+format-mismatched image views, and `vkCmdDrawIndirect` /
+`vkCmdDrawIndexedIndirect`.
+
+## Status
+
+Work in progress. Open areas, from the edenprobe diff: quads and some
+index-buffer cases, conditional rendering and query results, stencil/early-Z
+with shader depth writes, bindless textures, a few formats. There is also an
+unresolved rare single-frame flicker; the diagnostic code for it is still
+compiled in.
 
 ## Building
 
@@ -39,8 +68,8 @@ Android (arm64, API level 29) is a cross build with the NDK r28c at
     llvm-strip -o libvulkan_malisx2.so build-android/src/libvulkan_malisx2.so
 
 The result is a Vulkan HAL module (`HMI`) with 16 KiB-aligned segments,
-needing only `libc`, `libm`, `libdl` and `liblog`. ARMSX2 loads it as an
-adrenotools driver pack: the library plus a `meta.json` in a zip.
+needing only `libc`, `libm`, `libdl` and `liblog`. Eden loads it as a custom
+GPU driver: the library plus a `meta.json` in a zip.
 
 ROCKNIX (arm64 Linux, RK3566/RK3568 devices running ROCKNIX's
 `mali_kbase`) is a cross build against the toolchain of a ROCKNIX build
