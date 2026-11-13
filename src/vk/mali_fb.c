@@ -1090,6 +1090,15 @@ MALI_PER_ARCH(CmdBeginRendering)(VkCommandBuffer commandBuffer, const VkRenderin
 
    if (info->viewMask)
       vk_logw(VK_LOG_OBJS(cmd), "malisx2: multiview rendering is not supported");
+   bool resolve = (info->pDepthAttachment &&
+                   info->pDepthAttachment->resolveMode != VK_RESOLVE_MODE_NONE) ||
+                  (info->pStencilAttachment &&
+                   info->pStencilAttachment->resolveMode != VK_RESOLVE_MODE_NONE);
+   for (uint32_t i = 0; i < info->colorAttachmentCount; i++)
+      resolve |= info->pColorAttachments[i].resolveMode != VK_RESOLVE_MODE_NONE;
+   if (resolve)
+      vk_logw(VK_LOG_OBJS(cmd), "malisx2: attachment resolves are not supported: "
+                                "this pass's are not done");
 
    assert(info->colorAttachmentCount <= MALI_MAX_RTS);
    for (uint32_t i = 0; i < info->colorAttachmentCount; i++) {
