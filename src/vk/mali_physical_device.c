@@ -468,6 +468,9 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * capabilities follow the feature); pipelines hold a reference to their
     * layout, so the application may destroy it right after creating them. */
    .KHR_maintenance4 = true,
+
+   /* Private data slots: the runtime implements them (vk_object.c). */
+   .EXT_private_data = true,
 };
 
 static struct vk_device_extension_table
@@ -650,6 +653,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_maintenance4 */
       .maintenance4 = true,
+
+      /* VK_EXT_private_data */
+      .privateData = true,
    };
 }
 
