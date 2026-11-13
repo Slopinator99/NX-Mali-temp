@@ -403,6 +403,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * a fence-based fallback otherwise. */
    .KHR_timeline_semaphore = true,
 
+   /* Rasterizer discard (mali_gfx_rasterizer_discard), depth bias enable
+    * and primitive restart enable are read at draw time, as the first
+    * extension's states are. Not the logic op or patch control points. */
+   .EXT_extended_dynamic_state2 = true,
+
    /* Eden resets its query banks from the host. */
    .EXT_host_query_reset = true,
 
@@ -547,6 +552,11 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_EXT_host_query_reset (vkResetQueryPool, mali_cmd_query.c). */
       .hostQueryReset = true,
+
+      /* VK_EXT_extended_dynamic_state2 */
+      .extendedDynamicState2 = true,
+      .extendedDynamicState2LogicOp = false,
+      .extendedDynamicState2PatchControlPoints = false,
 
       /* VK_KHR_sampler_mirror_clamp_to_edge (mali_sampler.c maps it). */
       .samplerMirrorClampToEdge = true,
