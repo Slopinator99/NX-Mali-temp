@@ -408,6 +408,12 @@ static const struct vk_device_extension_table mali_device_extensions = {
 
    /* The sampler descriptor has the mode already. */
    .KHR_sampler_mirror_clamp_to_edge = true,
+
+   /* Memory requirements before the object exists (mali_buffer.c,
+    * mali_image.c), maxBufferSize, LocalSizeId (the runtime's SPIR-V
+    * capabilities follow the feature); pipelines hold a reference to their
+    * layout, so the application may destroy it right after creating them. */
+   .KHR_maintenance4 = true,
 };
 
 static struct vk_device_extension_table
@@ -554,6 +560,9 @@ get_features(struct vk_features *f, uint32_t arch)
       /* gl_BaseVertex, gl_BaseInstance, and a gl_DrawID that is always 0
        * (mali_shader.c lower_sysvals). */
       .shaderDrawParameters = true,
+
+      /* VK_KHR_maintenance4 */
+      .maintenance4 = true,
    };
 }
 
@@ -806,6 +815,9 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       .protectedNoFault = false,
       .maxPerSetDescriptors = UINT16_MAX,
       .maxMemoryAllocationSize = max_alloc,
+      /* VK_KHR_maintenance4: a buffer has to fit one allocation
+       * (mali_CreateBuffer). */
+      .maxBufferSize = max_alloc,
       .maxTimelineSemaphoreValueDifference = INT64_MAX,
 
       /* VK_KHR_driver_properties */
