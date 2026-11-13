@@ -518,6 +518,12 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * compilers lower to plain arithmetic. No product is reported as
     * accelerated. */
    .KHR_shader_integer_dot_product = true,
+
+   /* A buffer's address is set when it is bound (mali_BindBufferMemory2)
+    * and the runtime returns it; shaders reach PhysicalStorageBuffer
+    * pointers as 64-bit global addresses (phys_ssbo_addr_format). No
+    * capture and replay. */
+   .KHR_buffer_device_address = true,
 };
 
 static struct vk_device_extension_table
@@ -729,6 +735,11 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_shader_integer_dot_product */
       .shaderIntegerDotProduct = true,
+
+      /* VK_KHR_buffer_device_address */
+      .bufferDeviceAddress = true,
+      .bufferDeviceAddressCaptureReplay = false,
+      .bufferDeviceAddressMultiDevice = false,
    };
 }
 
