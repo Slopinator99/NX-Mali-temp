@@ -468,6 +468,67 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * capabilities follow the feature); pipelines hold a reference to their
     * layout, so the application may destroy it right after creating them. */
    .KHR_maintenance4 = true,
+
+   /* Private data slots: the runtime implements them (vk_object.c). */
+   .EXT_private_data = true,
+
+   /* FAIL_ON_PIPELINE_COMPILE_REQUIRED and EARLY_RETURN_ON_FAILURE are
+    * honoured (mali_pipeline.c); the runtime takes the pipeline cache's
+    * EXTERNALLY_SYNCHRONIZED flag. */
+   .EXT_pipeline_creation_cache_control = true,
+
+   /* OpTerminateInvocation: pan_preprocess_nir lowers terminate to demote
+    * in fragment shaders (the hardware ends a quad once it is all
+    * discarded), as for panvk. */
+   .KHR_shader_terminate_invocation = true,
+
+   /* Workgroup memory a shader asks to start zeroed is zeroed by
+    * nir_zero_initialize_shared_memory (mali_shader.c). */
+   .KHR_zero_initialize_workgroup_memory = true,
+
+   /* The second copy commands are what the back halves implement; the
+    * runtime implements the first ones on them (vk_cmd_copy.c). */
+   .KHR_copy_commands2 = true,
+   /* No tools to list: the runtime answers with none. */
+   .EXT_tooling_info = true,
+   /* The SPIR-V parser skips non-semantic instructions. */
+   .KHR_shader_non_semantic_info = true,
+
+   /* Inline uniform blocks: the set layout, pools, writes, copies and
+    * templates hold the bytes in the set's own slots, behind a Buffer
+    * descriptor the shader reads as a uniform buffer (mali_descriptor_set.c,
+    * and the v7 lowering). */
+   .EXT_inline_uniform_block = true,
+
+   /* One subgroup size per arch (16, 8 on v7): a required size can only be
+    * that one, and compute workgroups fill whole warps when their width is
+    * a multiple of it, as panvk reports. */
+   .EXT_subgroup_size_control = true,
+
+   /* Texel buffer offsets: the alignment stays minTexelBufferOffsetAlignment
+    * for every format (no single-texel relaxation). */
+   .EXT_texel_buffer_alignment = true,
+
+   /* Image accesses out of bounds: pan_nir_lower_image turns the
+    * coordinates into the bounds-checked form, as for panvk. */
+   .EXT_image_robustness = true,
+
+   /* OpSDot, OpUDot and the accumulating forms: the SPIR-V parser emits
+    * NIR dot products, which kraid has instructions for and other
+    * compilers lower to plain arithmetic. No product is reported as
+    * accelerated. */
+   .KHR_shader_integer_dot_product = true,
+
+   /* A buffer's address is set when it is bound (mali_BindBufferMemory2)
+    * and the runtime returns it; shaders reach PhysicalStorageBuffer
+    * pointers as 64-bit global addresses (phys_ssbo_addr_format). No
+    * capture and replay. */
+   .KHR_buffer_device_address = true,
+
+   /* The Vulkan memory model: the SPIR-V parser gives every barrier and
+    * atomic its scope and semantics in NIR, which both compilers take. No
+    * availability and visibility chains. */
+   .KHR_vulkan_memory_model = true,
 };
 
 static struct vk_device_extension_table
@@ -650,6 +711,45 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_maintenance4 */
       .maintenance4 = true,
+
+      /* VK_EXT_private_data */
+      .privateData = true,
+
+      /* VK_EXT_pipeline_creation_cache_control */
+      .pipelineCreationCacheControl = true,
+
+      /* VK_KHR_shader_terminate_invocation */
+      .shaderTerminateInvocation = true,
+
+      /* VK_KHR_zero_initialize_workgroup_memory */
+      .shaderZeroInitializeWorkgroupMemory = true,
+
+      /* VK_EXT_inline_uniform_block. No update-after-bind sets. */
+      .inlineUniformBlock = true,
+      .descriptorBindingInlineUniformBlockUpdateAfterBind = false,
+
+      /* VK_EXT_subgroup_size_control */
+      .subgroupSizeControl = true,
+      .computeFullSubgroups = true,
+
+      /* VK_EXT_texel_buffer_alignment */
+      .texelBufferAlignment = true,
+
+      /* VK_EXT_image_robustness */
+      .robustImageAccess = true,
+
+      /* VK_KHR_shader_integer_dot_product */
+      .shaderIntegerDotProduct = true,
+
+      /* VK_KHR_buffer_device_address */
+      .bufferDeviceAddress = true,
+      .bufferDeviceAddressCaptureReplay = false,
+      .bufferDeviceAddressMultiDevice = false,
+
+      /* VK_KHR_vulkan_memory_model */
+      .vulkanMemoryModel = true,
+      .vulkanMemoryModelDeviceScope = true,
+      .vulkanMemoryModelAvailabilityVisibilityChains = false,
    };
 }
 
@@ -929,6 +1029,25 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       .supportedStencilResolveModes = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
       .independentResolveNone = false,
       .independentResolve = false,
+
+      /* VK_EXT_inline_uniform_block: 4 KiB a block, 16 blocks a stage and a
+       * set (each one is a uniform buffer to the shader; v7 takes 223). */
+      .maxInlineUniformBlockSize = 4096,
+      .maxPerStageDescriptorInlineUniformBlocks = 16,
+      .maxPerStageDescriptorUpdateAfterBindInlineUniformBlocks = 16,
+      .maxDescriptorSetInlineUniformBlocks = 16,
+      .maxDescriptorSetUpdateAfterBindInlineUniformBlocks = 16,
+      .maxInlineUniformTotalSize = 16 * 4096,
+
+      /* VK_EXT_subgroup_size_control (sizes after the v7 limits below). */
+      .requiredSubgroupSizeStages = VK_SHADER_STAGE_COMPUTE_BIT,
+
+      /* VK_EXT_texel_buffer_alignment: minTexelBufferOffsetAlignment, no
+       * single-texel relaxation. */
+      .storageTexelBufferOffsetAlignmentBytes = 64,
+      .storageTexelBufferOffsetSingleTexelAlignment = false,
+      .uniformTexelBufferOffsetAlignmentBytes = 64,
+      .uniformTexelBufferOffsetSingleTexelAlignment = false,
    };
 
    /*
@@ -970,6 +1089,12 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       props->maxDescriptorSetStorageImages = 1u << 8;
       props->subgroupSize = 8;
    }
+
+   /* VK_EXT_subgroup_size_control: the one size there is, on every stage
+    * that has subgroups. */
+   props->minSubgroupSize = props->subgroupSize;
+   props->maxSubgroupSize = props->subgroupSize;
+   props->maxComputeWorkgroupSubgroups = props->maxComputeWorkGroupInvocations / props->subgroupSize;
 
    snprintf(props->deviceName, sizeof(props->deviceName), "%s", name);
    /* The blob reports the device name as driverName too. */

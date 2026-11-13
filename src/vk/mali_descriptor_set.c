@@ -499,6 +499,13 @@ MALI_PER_ARCH(UpdateDescriptorSetWithTemplate)(VkDevice _device, VkDescriptorSet
 
    for (uint32_t i = 0; i < templ->entry_count; i++) {
       const struct vk_descriptor_template_entry *e = &templ->entries[i];
+      /* An inline uniform block's entry is bytes: array_element is the
+       * offset into the block and array_count the size. */
+      if (e->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
+         memcpy(iub_data(set, e->binding) + e->array_element,
+                (const uint8_t *)pData + e->offset, e->array_count);
+         continue;
+      }
       /* The template's stride need not match the Vulkan structs', so the
        * elements are written one at a time. */
       for (uint32_t j = 0; j < e->array_count; j++) {
@@ -523,8 +530,6 @@ MALI_PER_ARCH(UpdateDescriptorSetWithTemplate)(VkDevice _device, VkDescriptorSet
          case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
             w.pTexelBufferView = src;
             break;
-         case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:
-            continue; /* not used by Eden */
          default:
             w.pBufferInfo = src;
             break;
