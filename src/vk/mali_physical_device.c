@@ -481,6 +481,10 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * in fragment shaders (the hardware ends a quad once it is all
     * discarded), as for panvk. */
    .KHR_shader_terminate_invocation = true,
+
+   /* Workgroup memory a shader asks to start zeroed is zeroed by
+    * nir_zero_initialize_shared_memory (mali_shader.c). */
+   .KHR_zero_initialize_workgroup_memory = true,
 };
 
 static struct vk_device_extension_table
@@ -672,6 +676,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_shader_terminate_invocation */
       .shaderTerminateInvocation = true,
+
+      /* VK_KHR_zero_initialize_workgroup_memory */
+      .shaderZeroInitializeWorkgroupMemory = true,
    };
 }
 
