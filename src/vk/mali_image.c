@@ -545,8 +545,15 @@ mali_CreateImageView(VkDevice _device, const VkImageViewCreateInfo *pCreateInfo,
    MALI_DBG_EV(2);
    VK_FROM_HANDLE(mali_device, dev, _device);
 
+   /* Eden (and the stock driver) accept a view whose format differs from its
+    * image's even without MUTABLE_FORMAT_BIT; the runtime asserts on it. */
+   VK_FROM_HANDLE(mali_image, vimg, pCreateInfo->image);
+   const VkImageCreateFlags saved_flags = vimg->vk.create_flags;
+   if (pCreateInfo->format != vimg->vk.format)
+      vimg->vk.create_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
    struct mali_image_view *view =
       vk_image_view_create(&dev->vk, pCreateInfo, pAllocator, sizeof(*view));
+   vimg->vk.create_flags = saved_flags;
    if (!view)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 

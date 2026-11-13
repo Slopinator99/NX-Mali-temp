@@ -33,6 +33,7 @@
 
 #include "util/log.h"
 #include "vk_log.h"
+#include "vk_buffer.h"
 
 #include "mali_arch.h"
 #include "mali_queue.h"
@@ -412,7 +413,7 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
    struct mali_gfx_draw_state *d = &cmd->gfx.draw;
    struct mali_render_state *r = &cmd->gfx.render;
 
-   if (!di->count || !di->instance_count)
+   if (!di->indirect_va && (!di->count || !di->instance_count))
       return;
    /* DIAG v28: per-draw state hash (pipeline + blend + descriptor snapshot),
     * accumulated and dumped at EndCommandBuffer to localize the flicker. */
@@ -498,10 +499,29 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
    }
 
    struct cs_builder *b = mali_cmd_cs(cmd, MALI_SUBQUEUE_VERTEX_TILER);
+   if (di->indirect_va) {
+      /* VkDrawIndirectCommand / VkDrawIndexedIndirectCommand, read when the
+       * command stream runs. */
+      batch_flush(b, &e);
+      d->regs_valid &= ~(BITFIELD64_BIT(IDVS(INDEX_COUNT)) | BITFIELD64_BIT(IDVS(INSTANCE_COUNT)) |
+                         BITFIELD64_BIT(IDVS(INDEX_OFFSET)) | BITFIELD64_BIT(IDVS(VERTEX_OFFSET)));
+      struct cs_index a = mali_cs_scratch_reg64(b, 0);
+      cs_move64_to(b, a, di->indirect_va);
+      cs_load32_to(b, cs_reg32(b, IDVS(INDEX_COUNT)), a, 0);
+      cs_load32_to(b, cs_reg32(b, IDVS(INSTANCE_COUNT)), a, 4);
+      if (di->indexed) {
+         cs_load32_to(b, cs_reg32(b, IDVS(INDEX_OFFSET)), a, 8);
+         cs_load32_to(b, cs_reg32(b, IDVS(VERTEX_OFFSET)), a, 12);
+      } else {
+         cs_load32_to(b, cs_reg32(b, IDVS(VERTEX_OFFSET)), a, 8);
+         cs_move32_to(b, cs_reg32(b, IDVS(INDEX_OFFSET)), 0);
+      }
+   } else {
    batch_move32(&e, IDVS(INDEX_COUNT), di->count);
    batch_move32(&e, IDVS(INSTANCE_COUNT), di->instance_count);
    batch_move32(&e, IDVS(INDEX_OFFSET), di->indexed ? di->first_index : 0);
    batch_move32(&e, IDVS(VERTEX_OFFSET), (uint32_t)di->vertex_offset);
+   }
    /* Zero-based instance IDs; firstInstance reaches the shader as a
     * system value (panvk). */
    batch_move32(&e, IDVS(INSTANCE_OFFSET), 0);
@@ -578,6 +598,37 @@ MALI_PER_ARCH(CmdDrawIndexed)(VkCommandBuffer commandBuffer, uint32_t indexCount
       .indexed = true,
    };
    draw(cmd, &di);
+}
+
+static void
+draw_indirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset,
+              uint32_t drawCount, uint32_t stride, bool indexed)
+{
+   VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
+   VK_FROM_HANDLE(vk_buffer, buf, buffer);
+   if (!stride)
+      stride = indexed ? 20 : 16;
+   for (uint32_t i = 0; i < drawCount; i++) {
+      const struct mali_draw_info di = {
+         .indexed = indexed,
+         .indirect_va = vk_buffer_address(buf, offset + (uint64_t)i * stride),
+      };
+      draw(cmd, &di);
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdDrawIndirect)(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset,
+                               uint32_t drawCount, uint32_t stride)
+{
+   draw_indirect(commandBuffer, buffer, offset, drawCount, stride, false);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(CmdDrawIndexedIndirect)(VkCommandBuffer commandBuffer, VkBuffer buffer,
+                                      VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
+{
+   draw_indirect(commandBuffer, buffer, offset, drawCount, stride, true);
 }
 
 /* ---------------------------------------------------------------------- */

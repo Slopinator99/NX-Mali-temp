@@ -1044,6 +1044,7 @@ struct mali_draw_info {
    int32_t vertex_offset;      /* firstVertex or vertexOffset */
    uint32_t first_instance;
    bool indexed;
+   uint64_t indirect_va;       /* nonzero: the draw's arguments, read by the GPU */
 };
 
 #if PAN_ARCH < 9
