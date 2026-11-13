@@ -1,6 +1,6 @@
-# malisx2
+# NX-Mali
 
-A Vulkan driver for Arm Mali GPUs that talks to Arm's **kbase** kernel
+NX-Mali (v0.0.1) is a Vulkan driver for Arm Mali GPUs that talks to Arm's **kbase** kernel
 driver, the one Android phones and handhelds ship. It is written for one
 application, the [ARMSX2](https://github.com/ARMSX2/ARMSX2) PlayStation 2
 emulator, which loads it in place of the system driver. It implements what
@@ -36,7 +36,7 @@ Android (arm64, API level 29) is a cross build with the NDK r28c at
 
     meson setup build-android --cross-file cross/android-aarch64.ini
     ninja -C build-android
-    llvm-strip -o libvulkan_malisx2.so build-android/src/libvulkan_malisx2.so
+    llvm-strip -o libvulkan_nxmali.so build-android/src/libvulkan_nxmali.so
 
 The result is a Vulkan HAL module (`HMI`) with 16 KiB-aligned segments,
 needing only `libc`, `libm`, `libdl` and `liblog`. ARMSX2 loads it as an
