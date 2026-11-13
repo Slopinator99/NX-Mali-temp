@@ -316,6 +316,9 @@ available_memory(struct mali_physical_device *pdev)
  */
 static const struct vk_device_extension_table mali_device_extensions = {
    .KHR_driver_properties = true,
+   /* VkFormatProperties3 (mali_formats.c). */
+   .KHR_format_feature_flags2 = true,
+
    /* Sync-file import and export: the Android loader signals present
     * fences by importing the release fence (swapchain_maintenance1). */
    .KHR_external_fence_fd = true,
