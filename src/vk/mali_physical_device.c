@@ -434,6 +434,13 @@ static const struct vk_device_extension_table mali_device_extensions = {
    /* Eden resets its query banks from the host. */
    .EXT_host_query_reset = true,
 
+   /* OpDemoteToHelperInvocation and OpIsHelperInvocationEXT: the hardware's
+    * DISCARD is a demote on every arch (kraid emits it for demote and
+    * demote_if, and so does Mesa's Bifrost backend on v7), and
+    * pan_preprocess_nir lowers the helper query to the sample mask, as for
+    * panvk. */
+   .EXT_shader_demote_to_helper_invocation = true,
+
    /* The sampler descriptor has the mode already. */
    .KHR_sampler_mirror_clamp_to_edge = true,
 };
@@ -589,6 +596,9 @@ get_features(struct vk_features *f, uint32_t arch)
 
       /* VK_KHR_sampler_mirror_clamp_to_edge (mali_sampler.c maps it). */
       .samplerMirrorClampToEdge = true,
+
+      /* VK_EXT_shader_demote_to_helper_invocation */
+      .shaderDemoteToHelperInvocation = true,
 
       /* gl_BaseVertex, gl_BaseInstance, and a gl_DrawID that is always 0
        * (mali_shader.c lower_sysvals). */
