@@ -483,6 +483,16 @@ draw(struct mali_cmd_buffer *cmd, const struct mali_draw_info *di)
                    di->count, di->instance_count, di->indexed ? 1 : 0,
                    r->active ? "STALE" : "DROP");
    }
+   {
+      static uint32_t edx_n = 0;
+      if ((di->indexed || di->indirect_va) && edx_n < 8000) {
+         edx_n++;
+         mesa_logw("malisx2: EDX-DRAW n=%u idx=%d cnt=%u inst=%u first=%u voff=%d isz=%u ib=%llx ibsz=%u ind=%llx active=%d",
+                   edx_n, di->indexed ? 1 : 0, di->count, di->instance_count, di->first_index,
+                   di->vertex_offset, d->ib.index_size, (unsigned long long)d->ib.addr, d->ib.size,
+                   (unsigned long long)di->indirect_va, r->active ? 1 : 0);
+      }
+   }
    if (!r->active || !d->pipeline || !d->pipeline->vs) {
       vk_logw(VK_LOG_OBJS(cmd), "malisx2: draw outside a render pass or without a pipeline");
       return;

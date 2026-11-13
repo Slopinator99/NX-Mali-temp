@@ -32,6 +32,7 @@
 #include "mali_cmd_state.h"
 #include "mali_measure.h"
 
+#include "util/log.h"
 #include "mali_arch.h"
 #include "mali_memory.h"
 #include "mali_queue.h"
@@ -195,6 +196,15 @@ MALI_PER_ARCH(CmdDispatchBase)(VkCommandBuffer commandBuffer, uint32_t baseGroup
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    const uint32_t base[3] = {baseGroupX, baseGroupY, baseGroupZ};
    const uint32_t groups[3] = {groupCountX, groupCountY, groupCountZ};
+   {
+      static uint32_t edx_d = 0;
+      if (edx_d < 8000) {
+         edx_d++;
+         mesa_logw("malisx2: EDX-DISP n=%u groups=%u,%u,%u pc=%08x %08x %08x", edx_d, groupCountX,
+                   groupCountY, groupCountZ, ((const uint32_t *)cmd->push_constants)[0],
+                   ((const uint32_t *)cmd->push_constants)[1], ((const uint32_t *)cmd->push_constants)[2]);
+      }
+   }
    MALI_PER_ARCH(cmd_dispatch_shader)(cmd, cmd->compute.shader, &cmd->compute.desc,
                             cmd->push_constants, sizeof(cmd->push_constants),
                             base, groups);
