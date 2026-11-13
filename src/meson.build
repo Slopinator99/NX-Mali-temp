@@ -297,8 +297,8 @@ malisx2_waist_abort = _waist_variants['true']
 # build ID feeds the pipeline cache UUID.
 # Android also exports HMI, the HAL module the Android loader opens.
 _icd_sym = files(with_platform_android ? 'vk/mali_icd_android.sym' : 'vk/mali_icd.sym')
-libvulkan_malisx2 = shared_library(
-  'vulkan_malisx2',
+libvulkan_nxmali = shared_library(
+  'vulkan_nxmali',
   dependencies : [idep_mali_vk],
   link_whole : [malisx2_compiler, malisx2_waist],
   link_args : [
@@ -315,14 +315,14 @@ libvulkan_malisx2 = shared_library(
 #   VK_DRIVER_FILES=<builddir>/mali_devenv_icd.json
 # (or `meson devenv -C <builddir>`, which sets it).
 _icd_conf = configuration_data()
-_icd_conf.set('LIBRARY_PATH', libvulkan_malisx2.full_path())
+_icd_conf.set('LIBRARY_PATH', libvulkan_nxmali.full_path())
 mali_devenv_icd = configure_file(
   input : '../mali_icd.json.in',
   output : 'mali_devenv_icd.json',
   configuration : _icd_conf,
 )
 _icd_conf_installed = configuration_data()
-_icd_conf_installed.set('LIBRARY_PATH', 'libvulkan_malisx2.so')
+_icd_conf_installed.set('LIBRARY_PATH', 'libvulkan_nxmali.so')
 configure_file(
   input : '../mali_icd.json.in',
   output : 'mali_icd.@0@.json'.format(host_machine.cpu_family()),

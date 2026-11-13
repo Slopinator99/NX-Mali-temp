@@ -1,6 +1,6 @@
-# eden_mali_driver
+# NX-Mali
 
-A Vulkan driver for Arm Mali GPUs (kbase kernel driver, command-stream
+NX-Mali (v0.0.1) is a Vulkan driver for Arm Mali GPUs (kbase kernel driver, command-stream
 frontend), aimed at running **Nintendo Switch games in the
 [Eden](https://git.eden-emu.dev/eden-emu/eden) emulator** on Android devices
 and handhelds that ship Mali GPUs. It is installed like any custom GPU driver
@@ -65,7 +65,7 @@ Android (arm64, API level 29) is a cross build with the NDK r28c at
 
     meson setup build-android --cross-file cross/android-aarch64.ini
     ninja -C build-android
-    llvm-strip -o libvulkan_malisx2.so build-android/src/libvulkan_malisx2.so
+    llvm-strip -o libvulkan_nxmali.so build-android/src/libvulkan_nxmali.so
 
 The result is a Vulkan HAL module (`HMI`) with 16 KiB-aligned segments,
 needing only `libc`, `libm`, `libdl` and `liblog`. Eden loads it as a custom
