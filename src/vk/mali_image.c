@@ -431,6 +431,41 @@ mali_GetImageMemoryRequirements2(VkDevice _device, const VkImageMemoryRequiremen
    }
 }
 
+/*
+ * VK_KHR_maintenance4: an image's requirements before it exists. An image of
+ * the create info is made and destroyed around the query, so the answer is
+ * the one vkGetImageMemoryRequirements2 gives for it, as the extension
+ * requires; making one only lays it out, with no kernel call. A create info
+ * vkCreateImage refuses (the log says why) gets zero requirements.
+ */
+VKAPI_ATTR void VKAPI_CALL
+mali_GetDeviceImageMemoryRequirements(VkDevice _device,
+                                      const VkDeviceImageMemoryRequirements *pInfo,
+                                      VkMemoryRequirements2 *pMemoryRequirements)
+{
+   VkImage image;
+   if (mali_CreateImage(_device, pInfo->pCreateInfo, NULL, &image) != VK_SUCCESS) {
+      pMemoryRequirements->memoryRequirements = (VkMemoryRequirements){0};
+      return;
+   }
+   const VkImageMemoryRequirementsInfo2 info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
+      .image = image,
+   };
+   mali_GetImageMemoryRequirements2(_device, &info, pMemoryRequirements);
+   mali_DestroyImage(_device, image, NULL);
+}
+
+/* No sparse images. */
+VKAPI_ATTR void VKAPI_CALL
+mali_GetDeviceImageSparseMemoryRequirements(VkDevice _device,
+                                            const VkDeviceImageMemoryRequirements *pInfo,
+                                            uint32_t *pSparseMemoryRequirementCount,
+                                            VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
+{
+   *pSparseMemoryRequirementCount = 0;
+}
+
 /* The CRC knobs (mali_cmd_gfx.h): here, in code compiled once, so the
  * render-pass code of every arch reads the same ones.
  *

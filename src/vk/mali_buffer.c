@@ -86,6 +86,15 @@ mali_GetBufferMemoryRequirements2(VkDevice _device,
    buffer_requirements(buf->vk.size, pMemoryRequirements);
 }
 
+/* VK_KHR_maintenance4: the requirements depend on the size alone. */
+VKAPI_ATTR void VKAPI_CALL
+mali_GetDeviceBufferMemoryRequirements(VkDevice _device,
+                                       const VkDeviceBufferMemoryRequirements *pInfo,
+                                       VkMemoryRequirements2 *pMemoryRequirements)
+{
+   buffer_requirements(pInfo->pCreateInfo->size, pMemoryRequirements);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 mali_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount,
                        const VkBindBufferMemoryInfo *pBindInfos)
