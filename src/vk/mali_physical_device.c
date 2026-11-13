@@ -524,6 +524,11 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * pointers as 64-bit global addresses (phys_ssbo_addr_format). No
     * capture and replay. */
    .KHR_buffer_device_address = true,
+
+   /* The Vulkan memory model: the SPIR-V parser gives every barrier and
+    * atomic its scope and semantics in NIR, which both compilers take. No
+    * availability and visibility chains. */
+   .KHR_vulkan_memory_model = true,
 };
 
 static struct vk_device_extension_table
@@ -740,6 +745,11 @@ get_features(struct vk_features *f, uint32_t arch)
       .bufferDeviceAddress = true,
       .bufferDeviceAddressCaptureReplay = false,
       .bufferDeviceAddressMultiDevice = false,
+
+      /* VK_KHR_vulkan_memory_model */
+      .vulkanMemoryModel = true,
+      .vulkanMemoryModelDeviceScope = true,
+      .vulkanMemoryModelAvailabilityVisibilityChains = false,
    };
 }
 
