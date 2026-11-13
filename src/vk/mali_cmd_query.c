@@ -148,6 +148,7 @@ VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdResetQueryPool)(VkCommandBuffer commandBuffer, VkQueryPool _pool,
                                  uint32_t firstQuery, uint32_t queryCount)
 {
+   mesa_logw("malisx2: EDX-Q CmdReset first=%u count=%u", firstQuery, queryCount);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_query_pool, pool, _pool);
 
@@ -191,10 +192,26 @@ MALI_PER_ARCH(CmdResetQueryPool)(VkCommandBuffer commandBuffer, VkQueryPool _poo
    cs_wait_slot(b, MALI_SB_IMM_FLUSH);
 }
 
+/* VK_EXT_host_query_reset / Vulkan 1.2 vkResetQueryPool: the CPU zeroes the
+ * reports and availability words (the pool is CPU-uncached memory the GPU
+ * reads in place). */
+VKAPI_ATTR void VKAPI_CALL
+MALI_PER_ARCH(ResetQueryPool)(VkDevice _device, VkQueryPool _pool, uint32_t firstQuery,
+                              uint32_t queryCount)
+{
+   mesa_logw("malisx2: EDX-Q HostReset first=%u count=%u", firstQuery, queryCount);
+   VK_FROM_HANDLE(mali_query_pool, pool, _pool);
+   if (!queryCount)
+      return;
+   memset((uint8_t *)pool->bo.cpu + (uint64_t)firstQuery * MALI_QUERY_SLOT_SIZE, 0,
+          (uint64_t)queryCount * MALI_QUERY_SLOT_SIZE);
+}
+
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdBeginQuery)(VkCommandBuffer commandBuffer, VkQueryPool _pool, uint32_t query,
                              VkQueryControlFlags flags)
 {
+   mesa_logw("malisx2: EDX-Q Begin q=%u flags=0x%x", query, flags);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_query_pool, pool, _pool);
    struct mali_gfx_occlusion *oq = &cmd->gfx.occlusion;
@@ -221,6 +238,7 @@ MALI_PER_ARCH(CmdBeginQuery)(VkCommandBuffer commandBuffer, VkQueryPool _pool, u
 VKAPI_ATTR void VKAPI_CALL
 MALI_PER_ARCH(CmdEndQuery)(VkCommandBuffer commandBuffer, VkQueryPool _pool, uint32_t query)
 {
+   mesa_logw("malisx2: EDX-Q End q=%u", query);
    VK_FROM_HANDLE(mali_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(mali_query_pool, pool, _pool);
    struct mali_gfx_occlusion *oq = &cmd->gfx.occlusion;
@@ -266,6 +284,7 @@ MALI_PER_ARCH(GetQueryPoolResults)(VkDevice _device, VkQueryPool _pool, uint32_t
    VK_FROM_HANDLE(mali_query_pool, pool, _pool);
    VkResult result = VK_SUCCESS;
    const int64_t start = os_time_get_nano();
+   mesa_logw("malisx2: EDX-Q GetResults first=%u count=%u size=%zu stride=%llu flags=0x%x", firstQuery, queryCount, dataSize, (unsigned long long)stride, flags);
 
    for (uint32_t i = 0; i < queryCount; i++) {
       const uint32_t q = firstQuery + i;
@@ -304,6 +323,8 @@ MALI_PER_ARCH(GetQueryPoolResults)(VkDevice _device, VkQueryPool _pool, uint32_t
             *(uint32_t *)out_avail = avail ? 1 : 0;
       }
    }
+   if (queryCount && (flags & VK_QUERY_RESULT_64_BIT))
+      mesa_logw("malisx2: EDX-Q  -> res=%d first value=%llu last=%llu", (int)result, (unsigned long long)*(uint64_t *)pData, (unsigned long long)*(uint64_t *)((uint8_t *)pData + (queryCount - 1) * stride));
    return result;
 }
 
