@@ -415,6 +415,12 @@ static const struct vk_device_extension_table mali_device_extensions = {
     * (mali_cmd_state.h), the same on v9 and v11. */
    .EXT_vertex_attribute_divisor = true,
 
+   /* Every state it makes dynamic is read at draw time: the pipeline's
+    * words are repacked from the command buffer's dynamic state when they
+    * depend on it (mali_gfx_update_dirty), viewport, scissor and vertex
+    * strides are per draw already. */
+   .EXT_extended_dynamic_state = true,
+
    /* Emulated on binary syncs by the common runtime (pdev->sync_timeline_type).
     * Eden uses timeline semaphores for its GPU tick tracking when present and
     * a fence-based fallback otherwise. */
@@ -564,6 +570,9 @@ get_features(struct vk_features *f, uint32_t arch)
        * for every instance (mali_cmd_state.h). */
       .vertexAttributeInstanceRateDivisor = true,
       .vertexAttributeInstanceRateZeroDivisor = true,
+
+      /* VK_EXT_extended_dynamic_state */
+      .extendedDynamicState = true,
 
       /* VK_EXT_host_query_reset (vkResetQueryPool, mali_cmd_query.c). */
       .hostQueryReset = true,
